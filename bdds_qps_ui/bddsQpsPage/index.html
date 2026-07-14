@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BDDS Performance Statistics - BlueCat Gateway</title>
+<style>
+  @font-face {
+    font-family: 'Open Sans';
+    font-style: normal;
+    font-weight: 300;
+    src: url('fonts/a4933e7a22e115be5a67.woff2') format('woff2'),
+         url('fonts/1856a170cff4f04b9a91.woff') format('woff');
+  }
+  @font-face {
+    font-family: 'Open Sans';
+    font-style: normal;
+    font-weight: 400;
+    src: url('fonts/0a69e1398f51230ddf80.woff2') format('woff2'),
+         url('fonts/3d8deabfbb86f3802d73.woff') format('woff');
+  }
+  @font-face {
+    font-family: 'Open Sans';
+    font-style: normal;
+    font-weight: 600;
+    src: url('fonts/391803a1576f3c5289b2.woff2') format('woff2'),
+         url('fonts/c0ed32a3ea09e1328768.woff') format('woff');
+  }
+
+  :root {
+    color-scheme: light;
+    --series-1: #2a78d6; /* categorical slot 1 - blue */
+    --series-2: #1baf7a; /* categorical slot 2 - aqua */
+    --text-primary: #161616;
+    --text-secondary: #525252;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --chart-surface: #fcfcfb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Open Sans', -apple-system, "Segoe UI", Arial, sans-serif;
+    font-size: 14px;
+    margin: 0;
+    color: #161616;
+    background: #f4f4f4;
+  }
+
+  /* Header: dark "inverse" surface, matches Gateway's UI shell regardless of page theme */
+  #topbar {
+    display: flex;
+    align-items: center;
+    height: 48px;
+    padding: 0 8px;
+    background: #0a1624;
+    color: #fff;
+    position: relative;
+  }
+  .topbar-btn {
+    display: flex; align-items: center; gap: 6px;
+    height: 40px; padding: 0 12px; margin: 0 2px;
+    border: none; background: transparent; color: #fff;
+    font-family: inherit; font-size: 14px; cursor: pointer; border-radius: 2px;
+  }
+  .topbar-btn:hover { background: #1c2735; }
+  .topbar-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  #topbar .brand {
+    position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+    display: flex; align-items: center; height: 48px;
+    font-size: 15px; font-weight: 600; letter-spacing: .02em;
+    color: #fff; pointer-events: none;
+  }
+  #topbar .right { display: flex; align-items: center; margin-left: auto; position: relative; }
+  .topbar-menu {
+    position: absolute; top: 48px; right: 0; z-index: 30;
+    min-width: 210px; background: #fff; color: #161616;
+    border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,.18);
+    padding: 4px 0; display: none;
+  }
+  .topbar-menu.open { display: block; }
+  .topbar-menu .menu-heading {
+    padding: 8px 16px 4px; font-size: 11px; color: #6f6f6f;
+    text-transform: uppercase; letter-spacing: .03em;
+  }
+  .topbar-menu a {
+    display: block; padding: 8px 16px; font-size: 14px;
+    color: #161616; text-decoration: none; white-space: nowrap;
+  }
+  .topbar-menu a:hover { background: #e8e8e8; }
+  .topbar-menu hr { border: none; border-top: 1px solid #e0e0e0; margin: 4px 0; }
+  .topbar-menu .empty { padding: 8px 16px; font-size: 13px; color: #8d8d8d; }
+
+  /* Breadcrumb: sits inside the content column, above the page title */
+  #breadcrumb {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px;
+    font-size: 12px; font-weight: 400; color: #161616;
+  }
+  #breadcrumb a { color: #00539a; text-decoration: none; }
+  #breadcrumb a:hover { text-decoration: underline; }
+  #breadcrumb .sep { color: #8d8d8d; }
+
+  /* Layout: sidebar + content */
+  #body { display: flex; min-height: calc(100vh - 48px); }
+  #sidebar {
+    width: 256px;
+    flex: 0 0 256px;
+    background: #fff;
+    border-right: 1px solid #e0e0e0;
+    padding: 8px 0;
+    overflow-y: auto;
+  }
+  .nav-group-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; border: none; background: transparent; cursor: pointer;
+    padding: 10px 16px 6px; font-size: 12px; font-weight: 600;
+    color: #161616; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .nav-group-btn .caret { transition: transform .15s ease-out; font-size: 10px; color: #6f6f6f; }
+  .nav-group-btn[aria-expanded="false"] .caret { transform: rotate(-90deg); }
+  .nav-group-children.collapsed { display: none; }
+  #sidebar a {
+    display: block;
+    padding: 8px 16px;
+    color: #161616;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  #sidebar a:hover { background: #e8e8e8; }
+  #sidebar a.active { background: #edf5ff; color: #00539a; font-weight: 600; border-left: 3px solid #0072c3; padding-left: 13px; }
+  #sidebar .child a { padding-left: 32px; }
+  #sidebar .child a.active { padding-left: 29px; }
+  #sidebar .toplevel > a { font-weight: 600; }
+
+  #content { flex: 1; padding: 24px 28px; }
+
+  #pageHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+  h1 { font-size: 24px; font-weight: 400; margin: 0; }
+
+  /* Two-panel layout: server picker on the left, results on the right */
+  #panels { display: flex; align-items: stretch; gap: 16px; }
+  .panel {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    padding: 16px;
+  }
+  #pickerPanel { width: 320px; flex: 0 0 320px; display: flex; flex-direction: column; }
+  #resultsPanel { flex: 1; min-width: 0; }
+
+  /* Fixed to roughly 8 data rows tall; extra servers scroll instead of growing the panel */
+  #serverListScroll { overflow-y: auto; max-height: 270px; }
+  #pickerPanel thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+
+  .field-label { font-size: 13px; color: #525252; margin-bottom: 6px; }
+  select#configSelect {
+    width: 100%; height: 36px; padding: 0 10px;
+    border: 1px solid #8d8d8d; background: #fff; color: #161616;
+    font-family: inherit; font-size: 14px; margin-bottom: 16px;
+  }
+
+  #selectAllRow {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid #e0e0e0;
+    font-size: 13px; color: #525252;
+  }
+
+  table { border-collapse: collapse; width: 100%; background: #fff; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e0e0e0; }
+  th { font-size: 13px; font-weight: 600; color: #525252; }
+  #pickerPanel th, #pickerPanel td { padding: 6px 8px; font-size: 13.5px; }
+  #pickerPanel th:first-child, #pickerPanel td:first-child { width: 36px; padding-right: 0; }
+  td.num { text-align: left; font-variant-numeric: tabular-nums; }
+  #rows tr.total-row td { font-weight: 600; border-top: 2px solid #8d8d8d; }
+  input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+
+  #footerRow {
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+    flex: none; font-size: 12px; color: #525252; white-space: nowrap;
+  }
+  #error { color: #da1e28; margin-bottom: 12px; display: none; }
+  button.action { padding: 6px 14px; cursor: pointer; font-family: inherit; font-size: 13.5px; }
+
+  /* History charts */
+  #historyHeader { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 16px; }
+  #historyPanels { display: flex; align-items: stretch; gap: 16px; margin-top: 12px; }
+  .history-chart-panel { flex: 1; min-width: 0; }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 16px; }
+  .chart-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .chart-legend { display: flex; gap: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+  .legend-key { width: 16px; height: 2px; border-radius: 1px; display: inline-block; flex: none; }
+  .chart-wrap { position: relative; }
+
+  /* Time range picker */
+  .range-picker { position: relative; }
+  .range-picker-btn {
+    display: flex; align-items: center; gap: 8px;
+    height: 32px; padding: 0 12px; background: #fff; border: 1px solid #8d8d8d;
+    font-family: inherit; font-size: 13px; color: #00539a; cursor: pointer;
+  }
+  .range-picker-btn .range-caret { width: 12px; height: 12px; flex: none; transition: transform .15s ease-out; }
+  .range-picker-btn[aria-expanded="true"] .range-caret { transform: rotate(180deg); }
+  .range-popover {
+    position: absolute; top: 36px; right: 0; z-index: 20; min-width: 230px;
+    background: #fff; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    padding: 12px; display: none;
+  }
+  .range-popover.open { display: block; }
+  .range-presets { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .range-preset-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 4px;
+    font-size: 13.5px; color: var(--text-primary); cursor: pointer; border-radius: 2px;
+  }
+  .range-preset-row:hover { background: #f4f4f4; }
+  .range-preset-row input[type="radio"] { margin: 0; }
+  .range-custom { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid #e0e0e0; margin-bottom: 10px; }
+  .range-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+  .range-field input { height: 32px; padding: 0 8px; border: 1px solid #8d8d8d; font-family: inherit; font-size: 13px; }
+  .range-field input.invalid { border-color: #da1e28; }
+  .range-error { color: #da1e28; font-size: 12px; }
+  .range-actions { display: flex; justify-content: flex-end; }
+  #historyChart { width: 100%; height: 280px; display: block; overflow: visible; }
+  .chart-empty { color: var(--text-muted); font-size: 13px; padding: 40px 0; text-align: center; }
+  .chart-tooltip {
+    position: absolute; pointer-events: none; z-index: 5; display: none;
+    background: #fff; border: 1px solid #e0e0e0; box-shadow: 0 4px 12px rgba(0,0,0,.12);
+    border-radius: 2px; padding: 8px 10px; font-size: 12.5px; white-space: nowrap;
+  }
+  .chart-tooltip .tt-time { color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
+  .chart-tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+  .chart-tooltip .tt-row + .tt-row { margin-top: 3px; }
+  .chart-tooltip .tt-key { width: 12px; height: 2px; display: inline-block; flex: none; }
+  .chart-tooltip .tt-label { color: var(--text-secondary); }
+  .chart-tooltip .tt-value { font-weight: 600; color: var(--text-primary); margin-left: auto; padding-left: 10px; }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <a id="homeBtn" class="topbar-btn" href="/home">
+      <svg viewBox="0 0 32 32" fill="currentColor"><path d="M16 2 2 14h4v14h9V19h2v9h9V14h4z"/></svg>
+      <span>Home</span>
+    </a>
+    <div class="brand"><img id="logo" alt="" style="height:18px;margin-right:8px;visibility:hidden;"> BLUECAT Gateway</div>
+    <div class="right">
+      <button class="topbar-btn" id="helpBtn" type="button">
+        <svg viewBox="0 0 32 32" fill="currentColor"><path d="M16 2a14 14 0 1 0 14 14A14 14 0 0 0 16 2zm0 25a11 11 0 1 1 11-11 11 11 0 0 1-11 11z"/><path d="M17 22h-2v2h2zM16.5 8h-1A4.5 4.5 0 0 0 11 12.5h2A2.5 2.5 0 0 1 15.5 10h1a2.5 2.5 0 0 1 0 5H15v3.5h2V17a4.5 4.5 0 0 0-.5-9z"/></svg>
+        <span>Help</span>
+      </button>
+      <div class="topbar-menu" id="helpMenu"></div>
+
+      <button class="topbar-btn" id="systemBtn" type="button">
+        <svg viewBox="0 0 32 32" fill="currentColor"><path d="M27 16.76v-1.52l2.83-2.35-2.87-4.97-3.55 1.04a11 11 0 0 0-2.63-1.52L20 3.34h-5.94l-.78 3.4a11.1 11.1 0 0 0-2.63 1.53L7.1 7.23 4.23 12.2l2.83 2.35v1.52L4.23 18.4l2.87 4.97 3.55-1.04a11 11 0 0 0 2.63 1.52l.78 3.4h5.94l.78-3.4a11.1 11.1 0 0 0 2.63-1.53l3.55 1.04 2.87-4.97zM17 21.5a5.5 5.5 0 1 1 5.5-5.5 5.5 5.5 0 0 1-5.5 5.5z"/></svg>
+        <span>System</span>
+      </button>
+      <div class="topbar-menu" id="systemMenu"></div>
+
+      <button class="topbar-btn" id="accountBtn" type="button">
+        <svg viewBox="0 0 32 32" fill="currentColor"><path d="M16 4a6 6 0 1 0 6 6 6 6 0 0 0-6-6zm10 24H6v-2a8 8 0 0 1 8-8h4a8 8 0 0 1 8 8z"/></svg>
+        <span id="accountLabel">Account</span>
+      </button>
+      <div class="topbar-menu" id="accountMenu"></div>
+    </div>
+  </div>
+
+  <div id="body">
+    <nav id="sidebar"></nav>
+
+    <main id="content">
+      <div id="breadcrumb">
+        <span class="sep">&#8249;</span>
+        <a id="breadcrumbHome" href="/home">Home</a>
+        <span class="sep">&middot;</span>
+        <span>BDDS Performance Statistics</span>
+      </div>
+      <div id="pageHeader">
+        <h1>BDDS Performance Statistics</h1>
+        <div id="footerRow">
+          <span>Last updated: <span id="lastUpdated">-</span> &middot; auto-refresh every 60s</span>
+          <button class="action" id="refreshBtn">Refresh now</button>
+        </div>
+      </div>
+      <div id="error"></div>
+
+      <div id="panels">
+        <section class="panel" id="pickerPanel">
+          <div class="field-label">Select a configuration</div>
+          <select id="configSelect"></select>
+
+          <div class="field-label">Select BDDS Server</div>
+          <div id="selectAllRow">
+            <input type="checkbox" id="selectAll">
+            <label for="selectAll">Select all BDDS</label>
+          </div>
+          <div id="serverListScroll">
+            <table>
+              <thead>
+                <tr><th></th><th>Server</th><th>Address</th></tr>
+              </thead>
+              <tbody id="serverRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="resultsPanel">
+          <table>
+            <thead>
+              <tr><th>Server</th><th>Address</th><th>DNS QPS</th><th>DHCP LPS</th></tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </section>
+      </div>
+
+      <div id="historyHeader">
+        <span class="chart-title">Performance history</span>
+        <div class="range-picker">
+          <button type="button" class="range-picker-btn" id="rangeBtn" aria-expanded="false">
+            <span id="rangeLabel">Last hour</span>
+            <svg class="range-caret" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+          </button>
+          <div class="range-popover" id="rangePopover">
+            <div class="range-presets" id="rangePresets"></div>
+            <div class="range-custom" id="rangeCustom" hidden>
+              <label class="range-field">
+                <span>From</span>
+                <input type="datetime-local" id="rangeFrom">
+                <span class="range-error" id="rangeFromError" hidden>From cannot be older than 2 weeks</span>
+              </label>
+              <label class="range-field">
+                <span>To</span>
+                <input type="datetime-local" id="rangeTo">
+              </label>
+            </div>
+            <div class="range-actions">
+              <button type="button" class="action" id="rangeApply">Apply</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="historyPanels">
+        <section class="panel history-chart-panel">
+          <div class="chart-header">
+            <span class="chart-title">DNS QPS</span>
+            <div class="chart-legend" id="chartLegendQps"></div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="historyChartQps" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>
+            <div class="chart-tooltip" id="chartTooltipQps"></div>
+          </div>
+        </section>
+
+        <section class="panel history-chart-panel">
+          <div class="chart-header">
+            <span class="chart-title">DHCP LPS</span>
+            <div class="chart-legend" id="chartLegendLps"></div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="historyChartLps" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>
+            <div class="chart-tooltip" id="chartTooltipLps"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+<script>
+(function () {
+  var CURRENT_PATH = window.location.pathname;
+
+  function buildSidebar(navLinks) {
+    var sidebar = document.getElementById("sidebar");
+    sidebar.innerHTML = "";
+    var groupIndex = 0;
+
+    navLinks.forEach(function (item) {
+      if (item.children && item.children.length) {
+        groupIndex += 1;
+        var childrenId = "navgroup-" + groupIndex;
+
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "nav-group-btn";
+        btn.setAttribute("aria-expanded", "true");
+        btn.setAttribute("aria-controls", childrenId);
+
+        var label = document.createElement("span");
+        label.textContent = item.title;
+        var caret = document.createElement("span");
+        caret.className = "caret";
+        caret.textContent = "▾";
+        btn.appendChild(label);
+        btn.appendChild(caret);
+
+        var childrenWrap = document.createElement("div");
+        childrenWrap.className = "nav-group-children";
+        childrenWrap.id = childrenId;
+
+        item.children.forEach(function (child) {
+          var wrap = document.createElement("div");
+          wrap.className = "child";
+          wrap.appendChild(makeLink(child));
+          childrenWrap.appendChild(wrap);
+        });
+
+        btn.addEventListener("click", function () {
+          var expanded = btn.getAttribute("aria-expanded") === "true";
+          btn.setAttribute("aria-expanded", expanded ? "false" : "true");
+          childrenWrap.classList.toggle("collapsed", expanded);
+        });
+
+        sidebar.appendChild(btn);
+        sidebar.appendChild(childrenWrap);
+      } else if (item.href) {
+        var wrap = document.createElement("div");
+        wrap.className = "toplevel";
+        wrap.appendChild(makeLink(item));
+        sidebar.appendChild(wrap);
+      }
+    });
+  }
+
+  function makeLink(item) {
+    var a = document.createElement("a");
+    a.href = item.href;
+    a.textContent = item.title;
+    if (item.href === CURRENT_PATH) {
+      a.className = "active";
+    }
+    return a;
+  }
+
+  function populateMenu(el, entries) {
+    el.innerHTML = "";
+    if (!entries.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "Nothing here yet.";
+      el.appendChild(empty);
+      return;
+    }
+    entries.forEach(function (entry) {
+      if (entry.divider) {
+        el.appendChild(document.createElement("hr"));
+        return;
+      }
+      if (entry.heading) {
+        var h = document.createElement("div");
+        h.className = "menu-heading";
+        h.textContent = entry.heading;
+        el.appendChild(h);
+        return;
+      }
+      var a = document.createElement("a");
+      a.href = entry.url;
+      a.textContent = entry.text;
+      if (/^https?:\/\//.test(entry.url)) a.target = "_blank";
+      el.appendChild(a);
+    });
+  }
+
+  function wireMenuButton(btnId, menuId) {
+    var btn = document.getElementById(btnId);
+    var menu = document.getElementById(menuId);
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = !menu.classList.contains("open");
+      document.querySelectorAll(".topbar-menu.open").forEach(function (m) { m.classList.remove("open"); });
+      if (willOpen) menu.classList.add("open");
+    });
+  }
+
+  function loadChrome() {
+    ["helpBtn", "systemBtn", "accountBtn"].forEach(function (id, i) {
+      wireMenuButton(id, ["helpMenu", "systemMenu", "accountMenu"][i]);
+    });
+    document.addEventListener("click", function () {
+      document.querySelectorAll(".topbar-menu.open").forEach(function (m) { m.classList.remove("open"); });
+    });
+
+    fetch("/-/v3/navbar/data", { credentials: "same-origin" })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.json();
+      })
+      .then(function (data) {
+        if (data.user) {
+          var homeUrl = data.user.home_url || "/home";
+          document.getElementById("homeBtn").href = homeUrl;
+          document.getElementById("breadcrumbHome").href = homeUrl;
+          document.getElementById("accountLabel").textContent = data.user.username || "Account";
+          buildSidebar(data.user.nav_links || []);
+
+          var helpEntries = [].concat(
+            (data.user.help_links && data.user.help_links.platform) || [],
+            (data.user.help_links && data.user.help_links.custom) || []
+          ).map(function (l) { return { text: l.title, url: l.url }; });
+          populateMenu(document.getElementById("helpMenu"), helpEntries);
+
+          return fetch("/-/v3/dropdown_menu/data", { credentials: "same-origin" })
+            .then(function (r) { return r.ok ? r.json() : { dropdown_menu: [] }; })
+            .then(function (dropdown) {
+              var items = dropdown.dropdown_menu || [];
+              var systemEntries = items.filter(function (i) {
+                return /log/i.test(i.text);
+              }).map(function (i) { return { text: i.text, url: i.url }; });
+              var accountEntries = items.filter(function (i) {
+                return !/log/i.test(i.text);
+              }).map(function (i) { return { text: i.text, url: i.url }; });
+              accountEntries.push({ divider: true });
+              accountEntries.push({ text: "Log out", url: "/logout" });
+
+              populateMenu(document.getElementById("systemMenu"), systemEntries);
+              populateMenu(document.getElementById("accountMenu"), accountEntries);
+            });
+        }
+      })
+      .catch(function () {
+        // Navigation chrome is a nice-to-have; the page's own content still works without it.
+        populateMenu(document.getElementById("helpMenu"), []);
+        populateMenu(document.getElementById("systemMenu"), []);
+        populateMenu(document.getElementById("accountMenu"), [{ text: "Log out", url: "/logout" }]);
+      });
+  }
+
+  loadChrome();
+})();
+
+(function () {
+  var API_BASE = "/bdds_qps/v1/stats";
+  var REFRESH_MS = 60000;
+  // Fixed hue order (never cycled/reassigned per filter) - categorical slots 1, 2, 3, 4.
+  var SERIES_COLORS = ["#2a78d6", "#1baf7a", "#eda100", "#4a3aa7"];
+
+  // BAM's Prometheus keeps a rolling 14-day retention window; older custom "From" dates
+  // would just come back empty, so the picker warns about it up front instead.
+  var PROMETHEUS_RETENTION_DAYS = 14;
+
+  var RANGE_PRESETS = [
+    { key: "10m", label: "Last 10 minutes", minutes: 10 },
+    { key: "1h", label: "Last hour", minutes: 60 },
+    { key: "8h", label: "Last 8 hours", minutes: 8 * 60 },
+    { key: "24h", label: "Last 24 hours", minutes: 24 * 60 },
+    { key: "7d", label: "Last 7 days", minutes: 7 * 24 * 60 },
+    { key: "14d", label: "Last 14 days", minutes: 14 * 24 * 60 },
+    { key: "custom", label: "Custom" }
+  ];
+  // Selected time interval; `key` picks the preset, `start`/`end` hold the applied custom range.
+  var historyRange = { key: "1h", start: null, end: null };
+
+  function currentHistoryWindow() {
+    var preset = RANGE_PRESETS.filter(function (p) { return p.key === historyRange.key; })[0];
+    if (preset && preset.key !== "custom") {
+      var end = new Date();
+      return { start: new Date(end.getTime() - preset.minutes * 60000), end: end };
+    }
+    return { start: historyRange.start, end: historyRange.end };
+  }
+
+  function formatRangeLabel() {
+    var preset = RANGE_PRESETS.filter(function (p) { return p.key === historyRange.key; })[0];
+    if (preset && preset.key !== "custom") return preset.label;
+    if (historyRange.start && historyRange.end) {
+      var fmt = function (d) {
+        return d.toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      };
+      return fmt(historyRange.start) + " – " + fmt(historyRange.end);
+    }
+    return "Custom";
+  }
+
+  function toDatetimeLocalValue(date) {
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) +
+      "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
+  }
+
+  function wireRangePicker() {
+    var btn = document.getElementById("rangeBtn");
+    var popover = document.getElementById("rangePopover");
+    var presetsEl = document.getElementById("rangePresets");
+    var customEl = document.getElementById("rangeCustom");
+    var fromInput = document.getElementById("rangeFrom");
+    var toInput = document.getElementById("rangeTo");
+
+    var now = new Date();
+    fromInput.value = toDatetimeLocalValue(new Date(now.getTime() - 60 * 60000));
+    toInput.value = toDatetimeLocalValue(now);
+
+    RANGE_PRESETS.forEach(function (p) {
+      var row = document.createElement("label");
+      row.className = "range-preset-row";
+      var radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "rangePreset";
+      radio.value = p.key;
+      radio.checked = p.key === historyRange.key;
+      radio.addEventListener("change", function () {
+        customEl.hidden = p.key !== "custom";
+      });
+      var text = document.createElement("span");
+      text.textContent = p.label;
+      row.appendChild(radio);
+      row.appendChild(text);
+      presetsEl.appendChild(row);
+    });
+    customEl.hidden = historyRange.key !== "custom";
+
+    var fromError = document.getElementById("rangeFromError");
+
+    function validateFromDate() {
+      var from = new Date(fromInput.value);
+      var retentionLimit = new Date(Date.now() - PROMETHEUS_RETENTION_DAYS * 24 * 3600 * 1000);
+      var tooOld = !isNaN(from.getTime()) && from < retentionLimit;
+      fromInput.classList.toggle("invalid", tooOld);
+      fromError.hidden = !tooOld;
+      return !tooOld;
+    }
+    fromInput.addEventListener("input", validateFromDate);
+    fromInput.addEventListener("change", validateFromDate);
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = !popover.classList.contains("open");
+      popover.classList.toggle("open", willOpen);
+      btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+    });
+    document.addEventListener("click", function () {
+      popover.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
+    });
+    popover.addEventListener("click", function (e) { e.stopPropagation(); });
+
+    document.getElementById("rangeApply").addEventListener("click", function () {
+      var checked = presetsEl.querySelector("input[type=radio]:checked");
+      var key = checked ? checked.value : "1h";
+
+      if (key === "custom") {
+        if (!validateFromDate()) return;
+        var start = new Date(fromInput.value);
+        var end = new Date(toInput.value);
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+          showError("Please choose a valid From/To range.");
+          return;
+        }
+        historyRange = { key: key, start: start, end: end };
+      } else {
+        historyRange = { key: key, start: null, end: null };
+      }
+
+      document.getElementById("rangeLabel").textContent = formatRangeLabel();
+      popover.classList.remove("open");
+      btn.setAttribute("aria-expanded", "false");
+      loadHistory();
+    });
+  }
+
+  function showError(msg) {
+    var el = document.getElementById("error");
+    if (!msg) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.style.display = "block";
+    el.textContent = msg;
+  }
+
+  function fetchJSON(url) {
+    return fetch(url, { credentials: "same-origin" }).then(function (resp) {
+      if (!resp.ok) {
+        return resp.json().then(function (body) {
+          throw new Error((body && body.error) || ("HTTP " + resp.status));
+        });
+      }
+      return resp.json();
+    });
+  }
+
+  function currentConfiguration() {
+    var sel = document.getElementById("configSelect");
+    return sel.value || "";
+  }
+
+  function addressOnly(instance) {
+    // `instance` is Prometheus's "ip:port" scrape target label; the port is an
+    // implementation detail (the exporter port, not anything a reader needs), so only
+    // the IP is shown.
+    return instance ? instance.split(":")[0] : instance;
+  }
+
+  function selectedServers() {
+    return Array.prototype.slice
+      .call(document.querySelectorAll("#serverRows input[type=checkbox]:checked"))
+      .map(function (cb) { return cb.value; });
+  }
+
+  function loadConfigurations() {
+    return fetchJSON(API_BASE + "/configurations").then(function (data) {
+      var sel = document.getElementById("configSelect");
+      sel.innerHTML = "";
+      (data.configurations || []).forEach(function (c) {
+        var opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", function () {
+        loadServers().then(function () { refresh(); loadHistory(); });
+      });
+    });
+  }
+
+  function loadServers() {
+    var url = API_BASE + "/servers";
+    var configuration = currentConfiguration();
+    if (configuration) url += "?configuration=" + encodeURIComponent(configuration);
+
+    return fetchJSON(url).then(function (data) {
+      var tbody = document.getElementById("serverRows");
+      tbody.innerHTML = "";
+      var servers = data.servers || [];
+
+      if (!servers.length) {
+        tbody.innerHTML = '<tr><td colspan="3">No BDDS servers found.</td></tr>';
+        return;
+      }
+
+      servers.forEach(function (s) {
+        var tr = document.createElement("tr");
+
+        var checkboxCell = document.createElement("td");
+        var checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = s.exported_instance;
+        checkbox.addEventListener("change", function () {
+          syncSelectAllState();
+          refresh();
+          loadHistory();
+        });
+        checkboxCell.appendChild(checkbox);
+
+        var nameCell = document.createElement("td");
+        nameCell.textContent = s.exported_instance || "-";
+
+        var addressCell = document.createElement("td");
+        addressCell.textContent = addressOnly(s.instance) || "-";
+
+        tr.appendChild(checkboxCell);
+        tr.appendChild(nameCell);
+        tr.appendChild(addressCell);
+        tbody.appendChild(tr);
+      });
+
+      syncSelectAllState();
+    });
+  }
+
+  function syncSelectAllState() {
+    var boxes = document.querySelectorAll("#serverRows input[type=checkbox]");
+    var checked = document.querySelectorAll("#serverRows input[type=checkbox]:checked");
+    document.getElementById("selectAll").checked = boxes.length > 0 && boxes.length === checked.length;
+  }
+
+  function wireSelectAll() {
+    document.getElementById("selectAll").addEventListener("change", function (e) {
+      var boxes = document.querySelectorAll("#serverRows input[type=checkbox]");
+      boxes.forEach(function (cb) { cb.checked = e.target.checked; });
+      refresh();
+      loadHistory();
+    });
+  }
+
+  function renderRows(servers) {
+    var tbody = document.getElementById("rows");
+    tbody.innerHTML = "";
+    if (!servers.length) {
+      tbody.innerHTML = '<tr><td colspan="4">No BDDS servers are currently reporting statistics.</td></tr>';
+      return;
+    }
+
+    var totalQps = 0, totalLps = 0;
+    servers.forEach(function (s) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + (s.exported_instance || "-") + "</td>" +
+        "<td>" + (addressOnly(s.instance) || "-") + "</td>" +
+        '<td class="num">' + (s.dns_qps != null ? s.dns_qps.toFixed(2) : "-") + "</td>" +
+        '<td class="num">' + (s.dhcp_lps != null ? s.dhcp_lps.toFixed(2) : "-") + "</td>";
+      tbody.appendChild(tr);
+      totalQps += s.dns_qps || 0;
+      totalLps += s.dhcp_lps || 0;
+    });
+
+    var totalRow = document.createElement("tr");
+    totalRow.className = "total-row";
+    totalRow.innerHTML =
+      "<td>Total</td>" +
+      "<td></td>" +
+      '<td class="num">' + totalQps.toFixed(2) + "</td>" +
+      '<td class="num">' + totalLps.toFixed(2) + "</td>";
+    tbody.appendChild(totalRow);
+  }
+
+  function niceMax(value) {
+    if (value <= 0) return 1;
+    var exp = Math.floor(Math.log10(value));
+    var base = Math.pow(10, exp);
+    var fraction = value / base;
+    var niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+    return niceFraction * base;
+  }
+
+  function renderChart(rawSeries, ids) {
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.getElementById(ids.svg);
+    var legend = document.getElementById(ids.legend);
+    var tooltip = document.getElementById(ids.tooltip);
+    var W = 960, H = 280;
+    var padL = 40, padR = 12, padT = 12, padB = 24;
+    var innerW = W - padL - padR;
+    var innerH = H - padT - padB;
+
+    svg.innerHTML = "";
+    legend.innerHTML = "";
+    tooltip.style.display = "none";
+
+    var series = (rawSeries || []).filter(function (s) { return s.points && s.points.length; });
+
+    if (!series.length) {
+      var msg = document.createElementNS(svgNS, "text");
+      msg.setAttribute("x", W / 2);
+      msg.setAttribute("y", H / 2);
+      msg.setAttribute("text-anchor", "middle");
+      msg.setAttribute("fill", "#898781");
+      msg.setAttribute("font-size", "13");
+      msg.textContent = "No data for the selected time range.";
+      svg.appendChild(msg);
+      return;
+    }
+
+    var allPoints = series.reduce(function (acc, s) { return acc.concat(s.points); }, []);
+    var minT = Math.min.apply(null, allPoints.map(function (p) { return p.t; }));
+    var maxT = Math.max.apply(null, allPoints.map(function (p) { return p.t; }));
+    var maxV = Math.max.apply(null, allPoints.map(function (p) { return p.v; }).concat([1]));
+    var yMax = niceMax(maxV);
+
+    function xScale(t) {
+      return maxT === minT ? padL : padL + ((t - minT) / (maxT - minT)) * innerW;
+    }
+    function yScale(v) {
+      return padT + innerH - (v / yMax) * innerH;
+    }
+
+    // Y gridlines + labels
+    var ySteps = 4;
+    for (var i = 0; i <= ySteps; i++) {
+      var v = (yMax / ySteps) * i;
+      var y = yScale(v);
+      var line = document.createElementNS(svgNS, "line");
+      line.setAttribute("x1", padL); line.setAttribute("x2", W - padR);
+      line.setAttribute("y1", y); line.setAttribute("y2", y);
+      line.setAttribute("stroke", "#e1e0d9"); line.setAttribute("stroke-width", "1");
+      svg.appendChild(line);
+
+      var label = document.createElementNS(svgNS, "text");
+      label.setAttribute("x", padL - 8); label.setAttribute("y", y + 4);
+      label.setAttribute("text-anchor", "end"); label.setAttribute("font-size", "11");
+      label.setAttribute("fill", "#898781");
+      label.textContent = v.toFixed(v < 10 ? 1 : 0);
+      svg.appendChild(label);
+    }
+
+    // X-axis tick labels (~6, evenly spaced along the reference series). Ranges over a day
+    // include the date, since "hour:minute" alone is ambiguous across multiple days.
+    var refPoints = series[0].points;
+    var spanIncludesDate = (maxT - minT) > 24 * 3600;
+    var xTicks = 6;
+    for (var j = 0; j <= xTicks; j++) {
+      var idx = Math.round((refPoints.length - 1) * (j / xTicks));
+      var p = refPoints[idx];
+      if (!p) continue;
+      var x = xScale(p.t);
+      var xlabel = document.createElementNS(svgNS, "text");
+      xlabel.setAttribute("x", x); xlabel.setAttribute("y", H - 6);
+      xlabel.setAttribute("text-anchor", j === xTicks ? "end" : j === 0 ? "start" : "middle");
+      xlabel.setAttribute("font-size", "11"); xlabel.setAttribute("fill", "#898781");
+      xlabel.textContent = spanIncludesDate
+        ? new Date(p.t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+        : new Date(p.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      svg.appendChild(xlabel);
+    }
+
+    // One 2px line per server, fixed color order; legend mirrors it with a line-key
+    series.forEach(function (s, i) {
+      var color = SERIES_COLORS[i % SERIES_COLORS.length];
+      var d = s.points.map(function (p, idx) {
+        return (idx === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.v).toFixed(1);
+      }).join(" ");
+      var path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", color);
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linejoin", "round");
+      path.setAttribute("stroke-linecap", "round");
+      svg.appendChild(path);
+
+      var item = document.createElement("div");
+      item.className = "legend-item";
+      var key = document.createElement("span");
+      key.className = "legend-key";
+      key.style.background = color;
+      var label = document.createElement("span");
+      label.textContent = s.exported_instance;
+      item.appendChild(key);
+      item.appendChild(label);
+      legend.appendChild(item);
+    });
+
+    // Crosshair + one shared tooltip listing every series at the hovered X
+    var crosshair = document.createElementNS(svgNS, "line");
+    crosshair.setAttribute("y1", padT); crosshair.setAttribute("y2", H - padB);
+    crosshair.setAttribute("stroke", "#898781"); crosshair.setAttribute("stroke-width", "1");
+    crosshair.setAttribute("visibility", "hidden");
+    svg.appendChild(crosshair);
+
+    var hitRect = document.createElementNS(svgNS, "rect");
+    hitRect.setAttribute("x", padL); hitRect.setAttribute("y", padT);
+    hitRect.setAttribute("width", innerW); hitRect.setAttribute("height", innerH);
+    hitRect.setAttribute("fill", "transparent");
+    svg.appendChild(hitRect);
+
+    function nearestPoint(points, t) {
+      return points.reduce(function (best, p) {
+        return Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best;
+      }, points[0]);
+    }
+
+    hitRect.addEventListener("pointermove", function (evt) {
+      var rect = svg.getBoundingClientRect();
+      var mouseX = (evt.clientX - rect.left) * (W / rect.width);
+      var t = minT + ((mouseX - padL) / innerW) * (maxT - minT);
+      var hoverPoint = nearestPoint(refPoints, t);
+      var x = xScale(hoverPoint.t);
+
+      crosshair.setAttribute("x1", x);
+      crosshair.setAttribute("x2", x);
+      crosshair.setAttribute("visibility", "visible");
+
+      tooltip.innerHTML = "";
+      var timeEl = document.createElement("div");
+      timeEl.className = "tt-time";
+      timeEl.textContent = new Date(hoverPoint.t * 1000).toLocaleTimeString();
+      tooltip.appendChild(timeEl);
+
+      series.forEach(function (s, i) {
+        var pt = nearestPoint(s.points, hoverPoint.t);
+        var row = document.createElement("div");
+        row.className = "tt-row";
+        var key = document.createElement("span");
+        key.className = "tt-key";
+        key.style.background = SERIES_COLORS[i % SERIES_COLORS.length];
+        var label = document.createElement("span");
+        label.className = "tt-label";
+        label.textContent = s.exported_instance;
+        var value = document.createElement("span");
+        value.className = "tt-value";
+        value.textContent = pt ? pt.v.toFixed(2) : "-";
+        row.appendChild(key); row.appendChild(label); row.appendChild(value);
+        tooltip.appendChild(row);
+      });
+
+      tooltip.style.display = "block";
+      var wrapWidth = svg.parentElement.getBoundingClientRect().width;
+      var pxX = (x / W) * wrapWidth;
+      tooltip.style.left = Math.min(pxX + 12, wrapWidth - 170) + "px";
+      tooltip.style.top = "8px";
+    });
+
+    hitRect.addEventListener("pointerleave", function () {
+      crosshair.setAttribute("visibility", "hidden");
+      tooltip.style.display = "none";
+    });
+  }
+
+  var QPS_CHART_IDS = { svg: "historyChartQps", legend: "chartLegendQps", tooltip: "chartTooltipQps" };
+  var LPS_CHART_IDS = { svg: "historyChartLps", legend: "chartLegendLps", tooltip: "chartTooltipLps" };
+
+  function renderEmptyHistory() {
+    renderChart([], QPS_CHART_IDS);
+    renderChart([], LPS_CHART_IDS);
+  }
+
+  function loadHistory() {
+    if (!selectedServers().length) {
+      renderEmptyHistory();
+      return Promise.resolve();
+    }
+
+    var window = currentHistoryWindow();
+    if (!window.start || !window.end) {
+      renderEmptyHistory();
+      return Promise.resolve();
+    }
+
+    var params = [];
+    var configuration = currentConfiguration();
+    if (configuration) params.push("configuration=" + encodeURIComponent(configuration));
+    selectedServers().forEach(function (s) { params.push("server=" + encodeURIComponent(s)); });
+    params.push("start=" + encodeURIComponent(window.start.toISOString()));
+    params.push("end=" + encodeURIComponent(window.end.toISOString()));
+
+    return fetchJSON(API_BASE + "/history?" + params.join("&"))
+      .then(function (data) {
+        var series = data.series || {};
+        renderChart(series.dns_qps || [], QPS_CHART_IDS);
+        renderChart(series.dhcp_lps || [], LPS_CHART_IDS);
+      })
+      .catch(function () {
+        // The charts are supplementary to the table above; a failed history fetch
+        // shouldn't block the rest of the page.
+      });
+  }
+
+  function refresh() {
+    if (!selectedServers().length) {
+      showError(null);
+      renderRows([]);
+      document.getElementById("lastUpdated").textContent = new Date().toLocaleTimeString();
+      return Promise.resolve();
+    }
+
+    var params = [];
+    var configuration = currentConfiguration();
+    if (configuration) params.push("configuration=" + encodeURIComponent(configuration));
+    selectedServers().forEach(function (s) { params.push("server=" + encodeURIComponent(s)); });
+
+    var url = API_BASE + "/current" + (params.length ? "?" + params.join("&") : "");
+
+    return fetchJSON(url)
+      .then(function (data) {
+        showError(null);
+        renderRows(data.servers || []);
+        document.getElementById("lastUpdated").textContent = new Date().toLocaleTimeString();
+      })
+      .catch(function (err) {
+        showError("Failed to load statistics: " + err.message);
+      });
+  }
+
+  wireSelectAll();
+  wireRangePicker();
+  document.getElementById("refreshBtn").addEventListener("click", function () {
+    refresh();
+    loadHistory();
+  });
+
+  loadConfigurations()
+    .then(loadServers)
+    .then(function () { refresh(); loadHistory(); })
+    .catch(function (err) {
+      showError("Failed to load BDDS server list: " + err.message);
+    });
+
+  setInterval(function () { refresh(); loadHistory(); }, REFRESH_MS);
+})();
+</script>
+</body>
+</html>
