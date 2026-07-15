@@ -1,9 +1,9 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.0** <br/>
+Workflow Version: **1.1** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
-Date: **09-07-2026** <br/>
+Date: **14-07-2026** <br/>
 BlueCat Gateway Version: **isp-workflows:25.3.3** <br/>
 BAM / BDDS Version: **25.1.x (Debian 12 / bookworm)** <br/>
 Dependencies: **flask_restx, requests (both already provided by the Gateway runtime)** <br/>
@@ -28,12 +28,14 @@ seconds — matching Prometheus's `global.scrape_interval` on BAM, so faster pol
 just re-read the same sample.
 
 Known Errors and Bugs:
-- As of this writing, the network path from this Gateway to BAM's Prometheus port (9090)
-  is blocked (only port 443 is reachable between the two hosts). The API degrades
-  gracefully (HTTP 502 with an error message) until that path is opened.
+- If the network path from this Gateway to BAM's Prometheus port (9090) is blocked, the
+  API degrades gracefully (HTTP 502 with an error message naming the unreachable host)
+  instead of crashing.
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-14: Bumped to 1.1 for the first public release; no functional change since 1.0's
+  2026-07-10 fix.
 - 2026-07-10: Prometheus host is now read from this Gateway's configured BAM connection
   (`bam_service.get_prometheus_base_url()`) instead of a hardcoded IP address.
 - 2026-07-09: Initial version, replacing the earlier unfinished `bdds_qps` proof-of-concept
