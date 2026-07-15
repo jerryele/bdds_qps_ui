@@ -1,6 +1,6 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.2** <br/>
+Workflow Version: **1.3** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
 Date: **15-07-2026** <br/>
@@ -25,15 +25,24 @@ process last started (BAM's exporter doesn't expose a "since last poll" variant 
 metric), so they settle slowly and aren't a live per-minute rate. `null` when a server hasn't
 served any cacheable/cached queries yet.
 
+`/current` also returns a `totals` object: DNS QPS / DHCP LPS summed across servers, and an
+overall cache/query hit ratio computed from each server's *raw* hit/miss counts summed
+first and divided second — not an average of each server's percentage, which would
+misweight servers with very different traffic volumes. `/history` carries the same four
+metrics as time series, one per server per metric.
+
 REST endpoints (mounted at `/bdds_qps/v1/stats`):
 - `GET /bdds_qps/v1/stats/servers` — list BDDS servers currently reporting to Prometheus.
 - `GET /bdds_qps/v1/stats/current` — current DNS QPS / DHCP LPS / cache hit ratio / query hit
-  ratio for all servers, or for one server via `?server=<exported_instance>`.
+  ratio for all servers (plus a `totals` rollup), or for one server via
+  `?server=<exported_instance>`.
+- `GET /bdds_qps/v1/stats/history` — the same four metrics as time series over a window.
 - `GET /bdds_qps/v1/doc/` — Swagger UI for the above.
 
 UI page: `/bdds_qps_ui/page` (nav entry "BDDS Performance Statistics"), polls `/current` every 60
 seconds — matching Prometheus's `global.scrape_interval` on BAM, so faster polling would
-just re-read the same sample.
+just re-read the same sample. Shows four history charts side by side: DNS QPS, DHCP LPS,
+Cache Hit %, and Query Hit % (the latter two fixed to a 0-100% Y axis).
 
 Known Errors and Bugs:
 - If the network path from this Gateway to BAM's Prometheus port (9090) is blocked, the
@@ -42,6 +51,8 @@ Known Errors and Bugs:
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-15: Added a `totals` rollup (traffic-weighted, not averaged) to `/current`, cache/
+  query hit-ratio time series to `/history`, and two matching history charts to the UI.
 - 2026-07-15: Added cache hit ratio and query hit ratio columns to `/current` and the UI
   table, from BIND's `bc_dns_cachestats` counters.
 - 2026-07-14: Bumped to 1.1 for the first public release; no functional change since 1.0's

@@ -56,11 +56,14 @@ class QPSService:
             wanted = set(servers)
             all_servers = [s for s in all_servers if s["exported_instance"] in wanted]
 
-        stats = [self._read_server_stats(s) for s in all_servers]
+        results = [self._read_server_stats(s) for s in all_servers]
+        stats = [public for public, _raw in results]
+        raw_counts = [raw for _public, raw in results]
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "poll_interval_seconds": POLL_INTERVAL_SECONDS,
             "servers": stats,
+            "totals": self._compute_totals(stats, raw_counts),
         }
 
     def get_history(
@@ -94,6 +97,8 @@ class QPSService:
 
         dns_qps_series = []
         dhcp_lps_series = []
+        cache_hit_series = []
+        query_hit_series = []
         for s in all_servers:
             instance_filter = f'exported_instance="{s["exported_instance"]}"'
 
@@ -114,6 +119,19 @@ class QPSService:
                 "points": self._to_points(dhcp_result),
             })
 
+            cache_hit_series.append({
+                "exported_instance": s["exported_instance"],
+                "points": self._read_ratio_history(
+                    instance_filter, CACHE_HIT_CACHESTAT, CACHE_MISS_CACHESTAT, start, end, step
+                ),
+            })
+            query_hit_series.append({
+                "exported_instance": s["exported_instance"],
+                "points": self._read_ratio_history(
+                    instance_filter, QUERY_HIT_CACHESTAT, QUERY_MISS_CACHESTAT, start, end, step
+                ),
+            })
+
         return {
             "start": start.isoformat(),
             "end": end.isoformat(),
@@ -121,6 +139,8 @@ class QPSService:
             "series": {
                 "dns_qps": dns_qps_series,
                 "dhcp_lps": dhcp_lps_series,
+                "cache_hit_ratio": cache_hit_series,
+                "query_hit_ratio": query_hit_series,
             },
         }
 
@@ -135,7 +155,14 @@ class QPSService:
             return 3600
         return 7200
 
-    def _read_server_stats(self, server: dict) -> dict:
+    def _read_server_stats(self, server: dict) -> tuple:
+        """
+        Return `(public_stats, raw_cache_counts)` for one server: the dict shown in the API
+        response, plus the raw hit/miss counts backing its ratios (needed to roll up an
+        overall, correctly-weighted ratio across servers in `_compute_totals` - simply
+        averaging per-server percentages would misweight servers with very different
+        traffic volumes).
+        """
         instance_filter = f'exported_instance="{server["exported_instance"]}"'
 
         # `bc_dns_nsstats_since_poll` is a per-scrape delta (see POLL_INTERVAL_SECONDS), so
@@ -149,18 +176,28 @@ class QPSService:
         dhcp_promql = f"bc_dhcp4_leases_per_second{{{instance_filter}}}"
         dhcp_lps = self._first_value(self.client.instant_query(dhcp_promql))
 
-        return {
+        cache_hits, cache_misses = self._read_cache_counts(instance_filter, CACHE_HIT_CACHESTAT, CACHE_MISS_CACHESTAT)
+        query_hits, query_misses = self._read_cache_counts(instance_filter, QUERY_HIT_CACHESTAT, QUERY_MISS_CACHESTAT)
+
+        public = {
             **server,
             "dns_qps": round(dns_requests / POLL_INTERVAL_SECONDS, 2) if dns_requests is not None else None,
             "dhcp_lps": round(dhcp_lps, 2) if dhcp_lps is not None else None,
-            "cache_hit_ratio": self._read_hit_ratio(instance_filter, CACHE_HIT_CACHESTAT, CACHE_MISS_CACHESTAT),
-            "query_hit_ratio": self._read_hit_ratio(instance_filter, QUERY_HIT_CACHESTAT, QUERY_MISS_CACHESTAT),
+            "cache_hit_ratio": self._ratio_percent(cache_hits, cache_misses),
+            "query_hit_ratio": self._ratio_percent(query_hits, query_misses),
         }
+        raw_counts = {
+            "cache_hits": cache_hits,
+            "cache_misses": cache_misses,
+            "query_hits": query_hits,
+            "query_misses": query_misses,
+        }
+        return public, raw_counts
 
-    def _read_hit_ratio(self, instance_filter: str, hit_stat: str, miss_stat: str):
+    def _read_cache_counts(self, instance_filter: str, hit_stat: str, miss_stat: str) -> tuple:
         """
-        Return a hit-ratio percentage (0-100) from a pair of `bc_dns_cachestats` counters,
-        or `None` if either counter is missing or both are zero.
+        Return the raw `(hits, misses)` values (either may be `None`) for a pair of
+        `bc_dns_cachestats` counters.
 
         These are lifetime counters (since the BDDS's named process last started), not a
         recent-window rate like `dns_qps`/`dhcp_lps` - there's no "since last poll" variant
@@ -172,11 +209,60 @@ class QPSService:
         )
         result = self.client.instant_query(promql)
         values = {series["metric"]["cachestat"]: float(series["value"][1]) for series in result}
-        hits = values.get(hit_stat)
-        misses = values.get(miss_stat)
+        return values.get(hit_stat), values.get(miss_stat)
+
+    def _read_ratio_history(
+        self, instance_filter: str, hit_stat: str, miss_stat: str, start: datetime, end: datetime, step: str
+    ) -> list:
+        """Return `{"t", "v"}` hit-ratio-percentage points, one per Prometheus sample."""
+        promql = (
+            f"bc_dns_cachestats{{{instance_filter}, view=\"{BIND_DEFAULT_VIEW}\", "
+            f'cachestat=~"{hit_stat}|{miss_stat}"}}'
+        )
+        result = self.client.range_query(promql, start.timestamp(), end.timestamp(), step)
+        series_by_stat = {series["metric"]["cachestat"]: series["values"] for series in result}
+        hit_values = series_by_stat.get(hit_stat, [])
+        # Look misses up by timestamp rather than zipping the two lists index-for-index, in
+        # case Prometheus drops/staggers a sample on one side (e.g. a scrape that timed out).
+        misses_by_ts = {int(t): float(v) for t, v in series_by_stat.get(miss_stat, [])}
+
+        points = []
+        for t, hits in hit_values:
+            ts = int(t)
+            if ts not in misses_by_ts:
+                continue
+            ratio = self._ratio_percent(float(hits), misses_by_ts[ts])
+            if ratio is not None:
+                points.append({"t": ts, "v": ratio})
+        return points
+
+    @staticmethod
+    def _ratio_percent(hits, misses):
+        """A hit-ratio percentage (0-100) from a pair of hit/miss counts, or `None` if
+        either is missing or both are zero."""
         if hits is None or misses is None or (hits + misses) == 0:
             return None
         return round(100 * hits / (hits + misses), 2)
+
+    @staticmethod
+    def _compute_totals(stats: list, raw_counts: list) -> dict:
+        """
+        Roll up DNS QPS / DHCP LPS (summable rates) and an overall cache/query hit ratio
+        (summed hits and misses across servers, *then* divided - not an average of each
+        server's percentage, which would misweight servers with very different traffic).
+        """
+        dns_qps_total = sum(s["dns_qps"] for s in stats if s["dns_qps"] is not None)
+        dhcp_lps_total = sum(s["dhcp_lps"] for s in stats if s["dhcp_lps"] is not None)
+        cache_hits_total = sum(r["cache_hits"] for r in raw_counts if r["cache_hits"] is not None)
+        cache_misses_total = sum(r["cache_misses"] for r in raw_counts if r["cache_misses"] is not None)
+        query_hits_total = sum(r["query_hits"] for r in raw_counts if r["query_hits"] is not None)
+        query_misses_total = sum(r["query_misses"] for r in raw_counts if r["query_misses"] is not None)
+        return {
+            "dns_qps": round(dns_qps_total, 2),
+            "dhcp_lps": round(dhcp_lps_total, 2),
+            "cache_hit_ratio": QPSService._ratio_percent(cache_hits_total, cache_misses_total),
+            "query_hit_ratio": QPSService._ratio_percent(query_hits_total, query_misses_total),
+        }
 
     @staticmethod
     def _server_labels(metric: dict) -> dict:

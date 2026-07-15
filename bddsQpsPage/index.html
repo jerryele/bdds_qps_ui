@@ -183,6 +183,7 @@
   /* History charts */
   #historyHeader { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 16px; }
   #historyPanels { display: flex; align-items: stretch; gap: 16px; margin-top: 12px; }
+  .history-panels-row { display: flex; align-items: stretch; gap: 16px; margin-top: 16px; }
   .history-chart-panel { flex: 1; min-width: 0; }
   .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 16px; }
   .chart-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
@@ -361,6 +362,30 @@
           <div class="chart-wrap">
             <svg id="historyChartLps" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>
             <div class="chart-tooltip" id="chartTooltipLps"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="history-panels-row">
+        <section class="panel history-chart-panel">
+          <div class="chart-header">
+            <span class="chart-title">Cache Hit %</span>
+            <div class="chart-legend" id="chartLegendCacheHit"></div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="historyChartCacheHit" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>
+            <div class="chart-tooltip" id="chartTooltipCacheHit"></div>
+          </div>
+        </section>
+
+        <section class="panel history-chart-panel">
+          <div class="chart-header">
+            <span class="chart-title">Query Hit %</span>
+            <div class="chart-legend" id="chartLegendQueryHit"></div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="historyChartQueryHit" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>
+            <div class="chart-tooltip" id="chartTooltipQueryHit"></div>
           </div>
         </section>
       </div>
@@ -778,7 +803,7 @@
     return v != null ? v.toFixed(2) + "%" : "-";
   }
 
-  function renderRows(servers) {
+  function renderRows(servers, totals) {
     var tbody = document.getElementById("rows");
     tbody.innerHTML = "";
     if (!servers.length) {
@@ -786,7 +811,6 @@
       return;
     }
 
-    var totalQps = 0, totalLps = 0;
     servers.forEach(function (s) {
       var tr = document.createElement("tr");
       tr.innerHTML =
@@ -797,22 +821,21 @@
         '<td class="num">' + formatPct(s.cache_hit_ratio) + "</td>" +
         '<td class="num">' + formatPct(s.query_hit_ratio) + "</td>";
       tbody.appendChild(tr);
-      totalQps += s.dns_qps || 0;
-      totalLps += s.dhcp_lps || 0;
     });
 
-    // Cache/query hit ratios aren't summable across servers (they're not per-server rates,
-    // and a naive average would misweight servers with very different traffic volumes), so
-    // the Total row only rolls up DNS QPS / DHCP LPS.
+    // Cache/query hit ratio totals come from the API (summed hits/misses across servers,
+    // then divided), not a client-side average of per-server percentages - that would
+    // misweight servers with very different traffic volumes.
+    totals = totals || {};
     var totalRow = document.createElement("tr");
     totalRow.className = "total-row";
     totalRow.innerHTML =
       "<td>Total</td>" +
       "<td></td>" +
-      '<td class="num">' + totalQps.toFixed(2) + "</td>" +
-      '<td class="num">' + totalLps.toFixed(2) + "</td>" +
-      '<td class="num"></td>' +
-      '<td class="num"></td>';
+      '<td class="num">' + (totals.dns_qps != null ? totals.dns_qps.toFixed(2) : "-") + "</td>" +
+      '<td class="num">' + (totals.dhcp_lps != null ? totals.dhcp_lps.toFixed(2) : "-") + "</td>" +
+      '<td class="num">' + formatPct(totals.cache_hit_ratio) + "</td>" +
+      '<td class="num">' + formatPct(totals.query_hit_ratio) + "</td>";
     tbody.appendChild(totalRow);
   }
 
@@ -825,7 +848,10 @@
     return niceFraction * base;
   }
 
-  function renderChart(rawSeries, ids) {
+  function renderChart(rawSeries, ids, opts) {
+    opts = opts || {};
+    var formatValue = opts.formatValue || function (v) { return v.toFixed(2); };
+    var formatAxis = opts.formatAxis || function (v) { return v.toFixed(v < 10 ? 1 : 0); };
     var svgNS = "http://www.w3.org/2000/svg";
     var svg = document.getElementById(ids.svg);
     var legend = document.getElementById(ids.legend);
@@ -857,7 +883,7 @@
     var minT = Math.min.apply(null, allPoints.map(function (p) { return p.t; }));
     var maxT = Math.max.apply(null, allPoints.map(function (p) { return p.t; }));
     var maxV = Math.max.apply(null, allPoints.map(function (p) { return p.v; }).concat([1]));
-    var yMax = niceMax(maxV);
+    var yMax = opts.fixedMax != null ? opts.fixedMax : niceMax(maxV);
 
     function xScale(t) {
       return maxT === minT ? padL : padL + ((t - minT) / (maxT - minT)) * innerW;
@@ -881,7 +907,7 @@
       label.setAttribute("x", padL - 8); label.setAttribute("y", y + 4);
       label.setAttribute("text-anchor", "end"); label.setAttribute("font-size", "11");
       label.setAttribute("fill", "#898781");
-      label.textContent = v.toFixed(v < 10 ? 1 : 0);
+      label.textContent = formatAxis(v);
       svg.appendChild(label);
     }
 
@@ -980,7 +1006,7 @@
         label.textContent = s.exported_instance;
         var value = document.createElement("span");
         value.className = "tt-value";
-        value.textContent = pt ? pt.v.toFixed(2) : "-";
+        value.textContent = pt ? formatValue(pt.v) : "-";
         row.appendChild(key); row.appendChild(label); row.appendChild(value);
         tooltip.appendChild(row);
       });
@@ -1000,10 +1026,21 @@
 
   var QPS_CHART_IDS = { svg: "historyChartQps", legend: "chartLegendQps", tooltip: "chartTooltipQps" };
   var LPS_CHART_IDS = { svg: "historyChartLps", legend: "chartLegendLps", tooltip: "chartTooltipLps" };
+  var CACHE_HIT_CHART_IDS = { svg: "historyChartCacheHit", legend: "chartLegendCacheHit", tooltip: "chartTooltipCacheHit" };
+  var QUERY_HIT_CHART_IDS = { svg: "historyChartQueryHit", legend: "chartLegendQueryHit", tooltip: "chartTooltipQueryHit" };
+  // Hit ratios are percentages: always scale the Y axis to a fixed 0-100%, rather than the
+  // auto-scaled "nice" max used for QPS/LPS, and format values with a "%" suffix.
+  var PERCENT_CHART_OPTS = {
+    fixedMax: 100,
+    formatValue: function (v) { return v.toFixed(2) + "%"; },
+    formatAxis: function (v) { return v.toFixed(0) + "%"; }
+  };
 
   function renderEmptyHistory() {
     renderChart([], QPS_CHART_IDS);
     renderChart([], LPS_CHART_IDS);
+    renderChart([], CACHE_HIT_CHART_IDS, PERCENT_CHART_OPTS);
+    renderChart([], QUERY_HIT_CHART_IDS, PERCENT_CHART_OPTS);
   }
 
   function loadHistory() {
@@ -1030,6 +1067,8 @@
         var series = data.series || {};
         renderChart(series.dns_qps || [], QPS_CHART_IDS);
         renderChart(series.dhcp_lps || [], LPS_CHART_IDS);
+        renderChart(series.cache_hit_ratio || [], CACHE_HIT_CHART_IDS, PERCENT_CHART_OPTS);
+        renderChart(series.query_hit_ratio || [], QUERY_HIT_CHART_IDS, PERCENT_CHART_OPTS);
       })
       .catch(function () {
         // The charts are supplementary to the table above; a failed history fetch
@@ -1055,7 +1094,7 @@
     return fetchJSON(url)
       .then(function (data) {
         showError(null);
-        renderRows(data.servers || []);
+        renderRows(data.servers || [], data.totals);
         document.getElementById("lastUpdated").textContent = new Date().toLocaleTimeString();
       })
       .catch(function (err) {
