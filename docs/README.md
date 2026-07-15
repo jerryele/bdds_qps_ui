@@ -1,26 +1,34 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.1** <br/>
+Workflow Version: **1.2** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
-Date: **14-07-2026** <br/>
+Date: **15-07-2026** <br/>
 BlueCat Gateway Version: **isp-workflows:25.3.3** <br/>
 BAM / BDDS Version: **25.1.x (Debian 12 / bookworm)** <br/>
 Dependencies: **flask_restx, requests (both already provided by the Gateway runtime)** <br/>
 
 Description/Example Usage:
 
-Displays current DNS queries-per-second (QPS) and DHCP leases-per-second (LPS) for every
-BDDS server managed by this BAM. Data comes from BAM's built-in Prometheus, which scrapes
-each BDDS's `:10048` metrics exporter over mutual TLS on our behalf — this workflow never
-talks to a BDDS's exporter directly. The Prometheus host is not hardcoded: it's the same
-BAM host this Gateway is already configured against (read from `g.user.get_api().get_url()`,
-see `bam_service.get_prometheus_base_url()`), on the fixed Prometheus port `9090`.
+Displays current DNS queries-per-second (QPS) and DHCP leases-per-second (LPS), plus BIND's
+cache hit ratio and query hit ratio, for every BDDS server managed by this BAM. Data comes
+from BAM's built-in Prometheus, which scrapes each BDDS's `:10048` metrics exporter over
+mutual TLS on our behalf — this workflow never talks to a BDDS's exporter directly. The
+Prometheus host is not hardcoded: it's the same BAM host this Gateway is already configured
+against (read from `g.user.get_api().get_url()`, see `bam_service.get_prometheus_base_url()`),
+on the fixed Prometheus port `9090`.
+
+Cache hit ratio (`CacheHits` / (`CacheHits` + `CacheMisses`)) and query hit ratio (`QueryHits`
+/ (`QueryHits` + `QueryMisses`)) come from BIND's `bc_dns_cachestats` counters for the
+`default` view. Unlike DNS QPS/DHCP LPS, these are lifetime counters since the BDDS's named
+process last started (BAM's exporter doesn't expose a "since last poll" variant of this
+metric), so they settle slowly and aren't a live per-minute rate. `null` when a server hasn't
+served any cacheable/cached queries yet.
 
 REST endpoints (mounted at `/bdds_qps/v1/stats`):
 - `GET /bdds_qps/v1/stats/servers` — list BDDS servers currently reporting to Prometheus.
-- `GET /bdds_qps/v1/stats/current` — current DNS QPS / DHCP LPS for all servers, or for one
-  server via `?server=<exported_instance>`.
+- `GET /bdds_qps/v1/stats/current` — current DNS QPS / DHCP LPS / cache hit ratio / query hit
+  ratio for all servers, or for one server via `?server=<exported_instance>`.
 - `GET /bdds_qps/v1/doc/` — Swagger UI for the above.
 
 UI page: `/bdds_qps_ui/page` (nav entry "BDDS Performance Statistics"), polls `/current` every 60
@@ -34,6 +42,8 @@ Known Errors and Bugs:
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-15: Added cache hit ratio and query hit ratio columns to `/current` and the UI
+  table, from BIND's `bc_dns_cachestats` counters.
 - 2026-07-14: Bumped to 1.1 for the first public release; no functional change since 1.0's
   2026-07-10 fix.
 - 2026-07-10: Prometheus host is now read from this Gateway's configured BAM connection

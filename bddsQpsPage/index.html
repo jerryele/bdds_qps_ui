@@ -304,7 +304,10 @@
         <section class="panel" id="resultsPanel">
           <table>
             <thead>
-              <tr><th>Server</th><th>Address</th><th>DNS QPS</th><th>DHCP LPS</th></tr>
+              <tr>
+                <th>Server</th><th>Address</th><th>DNS QPS</th><th>DHCP LPS</th>
+                <th>Cache Hit %</th><th>Query Hit %</th>
+              </tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>
@@ -771,11 +774,15 @@
     });
   }
 
+  function formatPct(v) {
+    return v != null ? v.toFixed(2) + "%" : "-";
+  }
+
   function renderRows(servers) {
     var tbody = document.getElementById("rows");
     tbody.innerHTML = "";
     if (!servers.length) {
-      tbody.innerHTML = '<tr><td colspan="4">No BDDS servers are currently reporting statistics.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6">No BDDS servers are currently reporting statistics.</td></tr>';
       return;
     }
 
@@ -786,19 +793,26 @@
         "<td>" + (s.exported_instance || "-") + "</td>" +
         "<td>" + (addressOnly(s.instance) || "-") + "</td>" +
         '<td class="num">' + (s.dns_qps != null ? s.dns_qps.toFixed(2) : "-") + "</td>" +
-        '<td class="num">' + (s.dhcp_lps != null ? s.dhcp_lps.toFixed(2) : "-") + "</td>";
+        '<td class="num">' + (s.dhcp_lps != null ? s.dhcp_lps.toFixed(2) : "-") + "</td>" +
+        '<td class="num">' + formatPct(s.cache_hit_ratio) + "</td>" +
+        '<td class="num">' + formatPct(s.query_hit_ratio) + "</td>";
       tbody.appendChild(tr);
       totalQps += s.dns_qps || 0;
       totalLps += s.dhcp_lps || 0;
     });
 
+    // Cache/query hit ratios aren't summable across servers (they're not per-server rates,
+    // and a naive average would misweight servers with very different traffic volumes), so
+    // the Total row only rolls up DNS QPS / DHCP LPS.
     var totalRow = document.createElement("tr");
     totalRow.className = "total-row";
     totalRow.innerHTML =
       "<td>Total</td>" +
       "<td></td>" +
       '<td class="num">' + totalQps.toFixed(2) + "</td>" +
-      '<td class="num">' + totalLps.toFixed(2) + "</td>";
+      '<td class="num">' + totalLps.toFixed(2) + "</td>" +
+      '<td class="num"></td>' +
+      '<td class="num"></td>';
     tbody.appendChild(totalRow);
   }
 

@@ -22,3 +22,14 @@ BDDS_JOB_LABEL = "bdds"
 # BIND nsstats counters representing incoming DNS requests (see `nsstat` label values on
 # bc_dns_nsstats_since_poll / bc_dns_nsstats_total).
 DNS_REQUEST_NSSTATS = ["Requestv4", "Requestv6"]
+
+# `bc_dns_cachestats` has a `view` label for every BIND view configured on the server, plus
+# BIND's own builtin "_bind" view (always zero here) - only "default" carries real traffic.
+BIND_DEFAULT_VIEW = "default"
+
+# `bc_dns_cachestats{cachestat=...}` counters are cumulative since the BDDS's named process
+# last started, not "since last poll" like nsstats - there's no delta variant of this metric.
+CACHE_HIT_CACHESTAT = "CacheHits"
+CACHE_MISS_CACHESTAT = "CacheMisses"
+QUERY_HIT_CACHESTAT = "QueryHits"
+QUERY_MISS_CACHESTAT = "QueryMisses"

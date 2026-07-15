@@ -6,7 +6,16 @@ from datetime import datetime, timedelta, timezone
 
 from . import bam_service
 from .prometheus_client import PrometheusClient
-from ..utils.constants import BDDS_JOB_LABEL, DNS_REQUEST_NSSTATS, POLL_INTERVAL_SECONDS
+from ..utils.constants import (
+    BDDS_JOB_LABEL,
+    BIND_DEFAULT_VIEW,
+    CACHE_HIT_CACHESTAT,
+    CACHE_MISS_CACHESTAT,
+    DNS_REQUEST_NSSTATS,
+    POLL_INTERVAL_SECONDS,
+    QUERY_HIT_CACHESTAT,
+    QUERY_MISS_CACHESTAT,
+)
 
 
 class QPSService:
@@ -144,7 +153,30 @@ class QPSService:
             **server,
             "dns_qps": round(dns_requests / POLL_INTERVAL_SECONDS, 2) if dns_requests is not None else None,
             "dhcp_lps": round(dhcp_lps, 2) if dhcp_lps is not None else None,
+            "cache_hit_ratio": self._read_hit_ratio(instance_filter, CACHE_HIT_CACHESTAT, CACHE_MISS_CACHESTAT),
+            "query_hit_ratio": self._read_hit_ratio(instance_filter, QUERY_HIT_CACHESTAT, QUERY_MISS_CACHESTAT),
         }
+
+    def _read_hit_ratio(self, instance_filter: str, hit_stat: str, miss_stat: str):
+        """
+        Return a hit-ratio percentage (0-100) from a pair of `bc_dns_cachestats` counters,
+        or `None` if either counter is missing or both are zero.
+
+        These are lifetime counters (since the BDDS's named process last started), not a
+        recent-window rate like `dns_qps`/`dhcp_lps` - there's no "since last poll" variant
+        of `bc_dns_cachestats` for BAM's exporter to expose.
+        """
+        promql = (
+            f"bc_dns_cachestats{{{instance_filter}, view=\"{BIND_DEFAULT_VIEW}\", "
+            f'cachestat=~"{hit_stat}|{miss_stat}"}}'
+        )
+        result = self.client.instant_query(promql)
+        values = {series["metric"]["cachestat"]: float(series["value"][1]) for series in result}
+        hits = values.get(hit_stat)
+        misses = values.get(miss_stat)
+        if hits is None or misses is None or (hits + misses) == 0:
+            return None
+        return round(100 * hits / (hits + misses), 2)
 
     @staticmethod
     def _server_labels(metric: dict) -> dict:
