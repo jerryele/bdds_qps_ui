@@ -43,3 +43,6 @@ Change Log:
 
 Screen Shot
 <img width="3496" height="1140" alt="image" src="https://github.com/user-attachments/assets/93bab0a4-1b4e-435e-87ad-31576178eb94" />
+
+Running against a live Gateway/BAM, showing real QPS/LPS data and history charts:
+![BDDS Performance Statistics page with live data](images/bdds-performance-statistics.webp)
