@@ -6,6 +6,8 @@ Prometheus (not from each BDDS's `:10048` exporter directly). The Prometheus hos
 from this Gateway's own BAM connection at runtime — it is never hardcoded — so the same
 package works against any Gateway/BAM pairing.
 
+![BDDS Performance Statistics page with live data](docs/images/bdds-performance-statistics.webp)
+
 See [docs/README.md](docs/README.md) for the full workflow doc (REST endpoints, UI page,
 dependencies, change log).
 
