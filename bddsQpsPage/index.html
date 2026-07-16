@@ -145,7 +145,11 @@
     padding: 16px;
   }
   #pickerPanel { width: 320px; flex: 0 0 320px; display: flex; flex-direction: column; }
+  #metricsPanel { width: 180px; flex: 0 0 180px; display: flex; flex-direction: column; }
   #resultsPanel { flex: 1; min-width: 0; }
+
+  .metric-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13.5px; color: #161616; }
+  #selectAllMetricsRow { padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid #e0e0e0; color: #525252; font-size: 13px; }
 
   /* Fixed to roughly 8 data rows tall; extra servers scroll instead of growing the panel */
   #serverListScroll { overflow-y: auto; max-height: 270px; }
@@ -329,13 +333,19 @@
           </div>
         </section>
 
+        <section class="panel" id="metricsPanel">
+          <div class="field-label">Select metrics</div>
+          <div id="selectAllMetricsRow" class="metric-row">
+            <input type="checkbox" id="selectAllMetrics">
+            <label for="selectAllMetrics">Select all</label>
+          </div>
+          <div id="metricCheckboxes"></div>
+        </section>
+
         <section class="panel" id="resultsPanel">
           <table>
             <thead>
-              <tr>
-                <th>Server</th><th>Address</th><th>DNS QPS</th><th>DHCP LPS</th>
-                <th>Cache Hit %</th><th>Query Hit %</th>
-              </tr>
+              <tr id="resultsHeaderRow"></tr>
             </thead>
             <tbody id="rows"></tbody>
           </table>
@@ -838,11 +848,85 @@
     return v != null ? v.toFixed(2) + "%" : "-";
   }
 
+  function formatNum(v) {
+    return v != null ? v.toFixed(2) : "-";
+  }
+
+  // The four selectable result-table columns; "Select metrics" in the middle panel toggles
+  // which of these show, same data either way (all four ride along in every /current call).
+  var METRICS = [
+    { key: "dns_qps", label: "DNS QPS", format: formatNum },
+    { key: "dhcp_lps", label: "DHCP LPS", format: formatNum },
+    { key: "cache_hit_ratio", label: "Cache Hit %", format: formatPct },
+    { key: "query_hit_ratio", label: "Query Hit %", format: formatPct }
+  ];
+
+  // Cache/render the last /current response so toggling a metric checkbox can redraw the
+  // table instantly without a redundant round trip to the server.
+  var lastServers = [];
+  var lastTotals = {};
+
+  function selectedMetrics() {
+    return METRICS.filter(function (m) {
+      var cb = document.getElementById("metric-" + m.key);
+      return !cb || cb.checked;
+    });
+  }
+
+  function buildMetricsPanel() {
+    var wrap = document.getElementById("metricCheckboxes");
+    wrap.innerHTML = "";
+    METRICS.forEach(function (m) {
+      var row = document.createElement("div");
+      row.className = "metric-row";
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = "metric-" + m.key;
+      cb.checked = true;
+      cb.addEventListener("change", function () {
+        syncSelectAllMetricsState();
+        renderRows(lastServers, lastTotals);
+      });
+      var label = document.createElement("label");
+      label.setAttribute("for", cb.id);
+      label.textContent = m.label;
+      row.appendChild(cb);
+      row.appendChild(label);
+      wrap.appendChild(row);
+    });
+    syncSelectAllMetricsState();
+  }
+
+  function syncSelectAllMetricsState() {
+    var boxes = METRICS.map(function (m) { return document.getElementById("metric-" + m.key); });
+    var checked = boxes.filter(function (cb) { return cb.checked; });
+    document.getElementById("selectAllMetrics").checked = boxes.length > 0 && boxes.length === checked.length;
+  }
+
+  function wireSelectAllMetrics() {
+    document.getElementById("selectAllMetrics").addEventListener("change", function (e) {
+      METRICS.forEach(function (m) { document.getElementById("metric-" + m.key).checked = e.target.checked; });
+      renderRows(lastServers, lastTotals);
+    });
+  }
+
   function renderRows(servers, totals) {
+    servers = servers || [];
+    totals = totals || {};
+    lastServers = servers;
+    lastTotals = totals;
+
+    var metrics = selectedMetrics();
+    var colCount = 2 + metrics.length;
+
+    var headerRow = document.getElementById("resultsHeaderRow");
+    headerRow.innerHTML = "<th>Server</th><th>Address</th>" +
+      metrics.map(function (m) { return "<th>" + m.label + "</th>"; }).join("");
+
     var tbody = document.getElementById("rows");
     tbody.innerHTML = "";
     if (!servers.length) {
-      tbody.innerHTML = '<tr><td colspan="6">No BDDS servers are currently reporting statistics.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + colCount + '">No BDDS servers are currently reporting statistics.</td></tr>';
       return;
     }
 
@@ -851,26 +935,19 @@
       tr.innerHTML =
         "<td>" + (s.exported_instance || "-") + "</td>" +
         "<td>" + (addressOnly(s.instance) || "-") + "</td>" +
-        '<td class="num">' + (s.dns_qps != null ? s.dns_qps.toFixed(2) : "-") + "</td>" +
-        '<td class="num">' + (s.dhcp_lps != null ? s.dhcp_lps.toFixed(2) : "-") + "</td>" +
-        '<td class="num">' + formatPct(s.cache_hit_ratio) + "</td>" +
-        '<td class="num">' + formatPct(s.query_hit_ratio) + "</td>";
+        metrics.map(function (m) { return '<td class="num">' + m.format(s[m.key]) + "</td>"; }).join("");
       tbody.appendChild(tr);
     });
 
     // Cache/query hit ratio totals come from the API (summed hits/misses across servers,
     // then divided), not a client-side average of per-server percentages - that would
     // misweight servers with very different traffic volumes.
-    totals = totals || {};
     var totalRow = document.createElement("tr");
     totalRow.className = "total-row";
     totalRow.innerHTML =
       "<td>Total</td>" +
       "<td></td>" +
-      '<td class="num">' + (totals.dns_qps != null ? totals.dns_qps.toFixed(2) : "-") + "</td>" +
-      '<td class="num">' + (totals.dhcp_lps != null ? totals.dhcp_lps.toFixed(2) : "-") + "</td>" +
-      '<td class="num">' + formatPct(totals.cache_hit_ratio) + "</td>" +
-      '<td class="num">' + formatPct(totals.query_hit_ratio) + "</td>";
+      metrics.map(function (m) { return '<td class="num">' + m.format(totals[m.key]) + "</td>"; }).join("");
     tbody.appendChild(totalRow);
   }
 
@@ -1183,11 +1260,17 @@
   }
 
   wireSelectAll();
+  buildMetricsPanel();
+  wireSelectAllMetrics();
   wireRangePicker();
   document.getElementById("refreshBtn").addEventListener("click", function () {
     refresh();
     loadHistory();
   });
+
+  // Render the (empty) table immediately so the header reflects the selected metrics even
+  // if the config/server load below fails - it shouldn't leave the header row blank.
+  renderRows([]);
 
   loadConfigurations()
     .then(loadServers)

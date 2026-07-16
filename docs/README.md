@@ -1,6 +1,6 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.4** <br/>
+Workflow Version: **1.5** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
 Date: **15-07-2026** <br/>
@@ -46,11 +46,14 @@ REST endpoints (mounted at `/bdds_qps/v1/stats`):
 
 UI page: `/bdds_qps_ui/page` (nav entry "BDDS Performance Statistics"), polls `/current` every 60
 seconds — matching Prometheus's `global.scrape_interval` on BAM, so faster polling would
-just re-read the same sample. Shows four history charts side by side: DNS QPS, DHCP LPS,
-Cache Hit %, and Query Hit % (the latter two fixed to a 0-100% Y axis). Below that, an
-"API calls to BAM's Prometheus" panel lists every PromQL request the latest `/current` call
-made, each collapsed to its query string by default — expand one to see the full request
-URL and raw Prometheus response.
+just re-read the same sample. A "Select metrics" panel between the server picker and the
+results table lets you show/hide any of the four columns (DNS QPS, DHCP LPS, Cache Hit %,
+Query Hit %); all four are always fetched in one `/current` call, so toggling one is an
+instant client-side re-render, not a new request. Below that, four history charts side by
+side: DNS QPS, DHCP LPS, Cache Hit %, and Query Hit % (the latter two fixed to a 0-100% Y
+axis). Below that, an "API calls to BAM's Prometheus" panel lists every PromQL request the
+latest `/current` call made, each collapsed to its query string by default — expand one to
+see the full request URL and raw Prometheus response.
 
 Known Errors and Bugs:
 - If the network path from this Gateway to BAM's Prometheus port (9090) is blocked, the
@@ -59,6 +62,9 @@ Known Errors and Bugs:
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-15: Added a "Select metrics" panel to the UI, letting the results table show only
+  the chosen columns among DNS QPS / DHCP LPS / Cache Hit % / Query Hit % (client-side only,
+  no API change).
 - 2026-07-15: Added an `api_calls` field to `/current` (every PromQL request made, its URL,
   and raw response) and a matching collapsible panel on the UI page.
 - 2026-07-15: Added a `totals` rollup (traffic-weighted, not averaged) to `/current`, cache/
