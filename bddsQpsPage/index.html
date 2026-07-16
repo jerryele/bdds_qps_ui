@@ -252,7 +252,12 @@
   .range-field input.invalid { border-color: #da1e28; }
   .range-error { color: #da1e28; font-size: 12px; }
   .range-actions { display: flex; justify-content: flex-end; }
-  #historyChart { width: 100%; height: 280px; display: block; overflow: visible; }
+  /* Was `#historyChart` (a stale ID from before charts became dynamic - never matched the
+     current per-chart `historyChart-<key>` IDs, so chart svgs had no real width/height rule). */
+  .chart-wrap svg { width: 100%; height: 280px; display: block; overflow: visible; }
+  /* Reserves a second, empty chart-row's worth of height even when only one row of charts
+     is actually selected, so toggling metrics never shifts the API-calls panel below. */
+  .history-chart-panel-ghost { visibility: hidden; }
   .chart-empty { color: var(--text-muted); font-size: 13px; padding: 40px 0; text-align: center; }
   .chart-tooltip {
     position: absolute; pointer-events: none; z-index: 5; display: none;
@@ -1153,12 +1158,26 @@
     return { svg: "historyChart-" + g.key, legend: "chartLegend-" + g.key, tooltip: "chartTooltip-" + g.key };
   }
 
-  // Fills the first row up to MAX_CHARTS_PER_ROW, overflowing any remainder into a second
-  // row - with at most MAX_HISTORY_CHARTS selected this never needs a third row.
+  // Always reserves two rows once anything is selected (fills the first up to
+  // MAX_CHARTS_PER_ROW, overflowing any remainder into the second, which may end up empty) -
+  // so the section's total height stays constant at "2 rows" regardless of how many charts
+  // are actually selected; only each row's chart widths flex to fit however many it holds.
   function chartRows(groups) {
     if (!groups.length) return [];
-    if (groups.length <= MAX_CHARTS_PER_ROW) return [groups];
     return [groups.slice(0, MAX_CHARTS_PER_ROW), groups.slice(MAX_CHARTS_PER_ROW)];
+  }
+
+  function chartPanelHtml(g) {
+    return (
+      '<div class="chart-header">' +
+        '<span class="chart-title">' + g.label + '</span>' +
+        '<div class="chart-legend" id="chartLegend-' + g.key + '"></div>' +
+      '</div>' +
+      '<div class="chart-wrap">' +
+        '<svg id="historyChart-' + g.key + '" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>' +
+        '<div class="chart-tooltip" id="chartTooltip-' + g.key + '"></div>' +
+      '</div>'
+    );
   }
 
   function buildHistoryCharts(groups) {
@@ -1167,20 +1186,21 @@
     chartRows(groups).forEach(function (rowGroups) {
       var row = document.createElement("div");
       row.className = "history-panels-row";
-      rowGroups.forEach(function (g) {
-        var section = document.createElement("section");
-        section.className = "panel history-chart-panel";
-        section.innerHTML =
-          '<div class="chart-header">' +
-            '<span class="chart-title">' + g.label + '</span>' +
-            '<div class="chart-legend" id="chartLegend-' + g.key + '"></div>' +
-          '</div>' +
-          '<div class="chart-wrap">' +
-            '<svg id="historyChart-' + g.key + '" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>' +
-            '<div class="chart-tooltip" id="chartTooltip-' + g.key + '"></div>' +
-          '</div>';
-        row.appendChild(section);
-      });
+      if (!rowGroups.length) {
+        // Empty row: an invisible placeholder with the same markup as a real chart panel,
+        // so it takes up the exact same height without an arbitrary hardcoded number.
+        var ghost = document.createElement("section");
+        ghost.className = "panel history-chart-panel history-chart-panel-ghost";
+        ghost.innerHTML = chartPanelHtml({ key: "ghost", label: " " });
+        row.appendChild(ghost);
+      } else {
+        rowGroups.forEach(function (g) {
+          var section = document.createElement("section");
+          section.className = "panel history-chart-panel";
+          section.innerHTML = chartPanelHtml(g);
+          row.appendChild(section);
+        });
+      }
       container.appendChild(row);
     });
   }

@@ -1,6 +1,6 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.8** <br/>
+Workflow Version: **1.9** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
 Date: **15-07-2026** <br/>
@@ -72,6 +72,11 @@ fixed 0-100% Y axis; the rest auto-scale. Toggling a metric re-renders the chart
 the already-fetched `/history` response, not a new request — same instant-re-render approach
 as the table.
 
+The section's overall height is always reserved for two full rows, even when only one row
+of charts is populated (an invisible placeholder panel fills the unused row) — so toggling
+metrics down to a single row never shifts the "API calls" panel below; only each populated
+row's chart widths flex to fit however many charts are actually in it.
+
 Below that, an "API calls to BAM's Prometheus" panel lists every PromQL request the latest
 `/current` call made, each collapsed to its query string by default — expand one to see the
 full request URL and raw Prometheus response.
@@ -83,6 +88,11 @@ Known Errors and Bugs:
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-15: The history-charts section now always reserves two rows' worth of height
+  (fixed regardless of selection), with an invisible placeholder filling any unused second
+  row - only chart widths within a row adjust dynamically now, not the section's height.
+  Also fixed a stale CSS selector (`#historyChart`) that never matched any chart's real ID,
+  left over from before charts became dynamic.
 - 2026-07-15: Disk Read/Write and Net RX/TX each now share one history chart (two lines per
   server) instead of two separate charts, so all 8 chart slots fit at once with everything
   checked.
