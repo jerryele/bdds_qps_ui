@@ -1,6 +1,6 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.9** <br/>
+Workflow Version: **1.10** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
 Date: **15-07-2026** <br/>
@@ -53,24 +53,23 @@ REST endpoints (mounted at `/bdds_qps/v1/stats`):
 UI page: `/bdds_qps_ui/page` (nav entry "BDDS Performance Statistics"), polls `/current` every 60
 seconds — matching Prometheus's `global.scrape_interval` on BAM, so faster polling would
 just re-read the same sample. A "Select metrics" panel between the server picker and the
-results table lets you show/hide any of the ten columns (DNS QPS, DHCP LPS, Cache Hit %,
-Query Hit %, CPU %, Memory %, Disk Read/Write IOPS, Net RX/TX pkt/s); all ten are always
-fetched in one `/current` call, so toggling one is an instant client-side re-render, not a
-new request.
+results table has 8 checkboxes, one per chart slot (DNS QPS, DHCP LPS, Cache Hit %, Query
+Hit %, CPU %, Memory %, **Disk IOPS**, **Network pkt/s**) — the last two each control *two*
+result-table columns at once (Disk Read + Disk Write IOPS, Net RX + Net TX pkt/s), even
+though those stay four separate columns in the table itself. All ten underlying metrics are
+always fetched in one `/current` call, so toggling a checkbox is an instant client-side
+re-render, not a new request.
 
-The history charts below mirror that same selection, grouped into 8 chart slots (in this
-fixed order): DNS QPS, DHCP LPS, Cache Hit %, Query Hit %, CPU %, Memory %, **Disk IOPS**,
-**Network pkt/s** — the last two each combine two metric columns (Disk Read + Disk Write,
-Net RX + Net TX) into one chart with a line per (server, metric), labeled e.g.
-"bdds251a Read" / "bdds251a Write" so they stay distinguishable. A chart slot shows if
-*either* of its metrics is checked in the panel above; checking only one still shows the
-chart with just that metric's lines. Charts lay out across up to two rows of up to four
-each (max 8 total — with everything checked, all 8 slots fit, since there are only 8 slots
-now). Each row's charts split its width evenly, so 1 selected slot gets a full-width chart,
-2 get half-width, etc. Percentage metrics (Cache Hit %, Query Hit %, CPU %, Memory %) get a
-fixed 0-100% Y axis; the rest auto-scale. Toggling a metric re-renders the chart rows from
-the already-fetched `/history` response, not a new request — same instant-re-render approach
-as the table.
+The history charts below mirror the same 8 checkboxes 1:1. Disk IOPS and Network pkt/s were
+already single charts (one line per (server, metric), labeled e.g. "bdds251a Read" /
+"bdds251a Write" to stay distinguishable) — now their checkbox is single too, so the chart
+and its two constituent table columns always show/hide together instead of independently.
+Charts lay out across up to two rows of up to four each (max 8 total, which is also the
+total number of slots, so everything checked always fits). Each row's charts split its width
+evenly, so 1 selected slot gets a full-width chart, 2 get half-width, etc. Percentage metrics
+(Cache Hit %, Query Hit %, CPU %, Memory %) get a fixed 0-100% Y axis; the rest auto-scale.
+Toggling a checkbox re-renders the chart rows from the already-fetched `/history` response,
+not a new request — same instant-re-render approach as the table.
 
 The section's overall height is always reserved for two full rows, even when only one row
 of charts is populated (an invisible placeholder panel fills the unused row) — so toggling
@@ -88,6 +87,10 @@ Known Errors and Bugs:
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-15: The "Select metrics" panel now has one checkbox per chart slot (8, not 10) -
+  Disk Read/Write IOPS share one checkbox, as do Net RX/TX pkt/s, so a chart and its table
+  columns always show/hide together instead of independently. Table columns are still four
+  separate ones either way.
 - 2026-07-15: The history-charts section now always reserves two rows' worth of height
   (fixed regardless of selection), with an invisible placeholder filling any unused second
   row - only chart widths within a row adjust dynamically now, not the section's height.

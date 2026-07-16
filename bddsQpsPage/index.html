@@ -851,27 +851,31 @@
   // "bdds251a Write"); single-metric groups don't need this, their line is just the server name.
   var METRIC_SHORT_LABEL = { disk_read_iops: "Read", disk_write_iops: "Write", net_rx_pps: "RX", net_tx_pps: "TX" };
 
+  // The "Select metrics" panel has one checkbox per CHART_GROUPS entry, not per METRICS
+  // entry - Disk Read/Write and Net RX/TX share one checkbox each, even though the results
+  // table still shows them as four separate columns. This maps each individual metric key
+  // to the id of the checkbox that actually controls it.
+  var METRIC_TO_GROUP_KEY = {};
+  CHART_GROUPS.forEach(function (g) { g.metrics.forEach(function (k) { METRIC_TO_GROUP_KEY[k] = g.key; }); });
+
   // Cache/render the last /current response so toggling a metric checkbox can redraw the
   // table instantly without a redundant round trip to the server.
   var lastServers = [];
   var lastTotals = {};
 
   function selectedMetrics() {
-    return METRICS.filter(function (m) {
-      var cb = document.getElementById("metric-" + m.key);
-      return !cb || cb.checked;
-    });
+    return METRICS.filter(function (m) { return isMetricChecked(m.key); });
   }
 
   function buildMetricsPanel() {
     var wrap = document.getElementById("metricCheckboxes");
     wrap.innerHTML = "";
-    METRICS.forEach(function (m) {
+    CHART_GROUPS.forEach(function (g) {
       var row = document.createElement("div");
       row.className = "metric-row";
       var cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.id = "metric-" + m.key;
+      cb.id = "metric-" + g.key;
       cb.checked = true;
       cb.addEventListener("change", function () {
         syncSelectAllMetricsState();
@@ -880,7 +884,7 @@
       });
       var label = document.createElement("label");
       label.setAttribute("for", cb.id);
-      label.textContent = m.label;
+      label.textContent = g.label;
       row.appendChild(cb);
       row.appendChild(label);
       wrap.appendChild(row);
@@ -889,14 +893,14 @@
   }
 
   function syncSelectAllMetricsState() {
-    var boxes = METRICS.map(function (m) { return document.getElementById("metric-" + m.key); });
+    var boxes = CHART_GROUPS.map(function (g) { return document.getElementById("metric-" + g.key); });
     var checked = boxes.filter(function (cb) { return cb.checked; });
     document.getElementById("selectAllMetrics").checked = boxes.length > 0 && boxes.length === checked.length;
   }
 
   function wireSelectAllMetrics() {
     document.getElementById("selectAllMetrics").addEventListener("change", function (e) {
-      METRICS.forEach(function (m) { document.getElementById("metric-" + m.key).checked = e.target.checked; });
+      CHART_GROUPS.forEach(function (g) { document.getElementById("metric-" + g.key).checked = e.target.checked; });
       renderRows(lastServers, lastTotals);
       renderHistoryCharts(lastHistorySeries);
     });
@@ -1142,7 +1146,7 @@
   var lastHistorySeries = {};
 
   function isMetricChecked(key) {
-    var cb = document.getElementById("metric-" + key);
+    var cb = document.getElementById("metric-" + (METRIC_TO_GROUP_KEY[key] || key));
     return !cb || cb.checked;
   }
 
