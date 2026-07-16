@@ -1,6 +1,6 @@
 <!-- Copyright 2026 BlueCat Networks (USA) Inc. and its affiliates. All Rights Reserved. -->
 
-Workflow Version: **1.5** <br/>
+Workflow Version: **1.6** <br/>
 Project Title: **BDDS Performance Statistics** <br/>
 Author: **jli@bluecatnetworks.com** <br/>
 Date: **15-07-2026** <br/>
@@ -25,11 +25,18 @@ process last started (BAM's exporter doesn't expose a "since last poll" variant 
 metric), so they settle slowly and aren't a live per-minute rate. `null` when a server hasn't
 served any cacheable/cached queries yet.
 
-`/current` also returns a `totals` object: DNS QPS / DHCP LPS summed across servers, and an
-overall cache/query hit ratio computed from each server's *raw* hit/miss counts summed
-first and divided second — not an average of each server's percentage, which would
-misweight servers with very different traffic volumes. `/history` carries the same four
-metrics as time series, one per server per metric.
+Also shows host-level metrics per BDDS, from BAM's Telegraf-style system exporter: CPU %
+(`bc_system_cpu_usage`, a 0-1 fraction), Memory % (`used / (used + available)` — there's no
+"total memory" metric to divide by directly), Disk Read/Write IOPS, and Network RX/TX
+packets/sec (the latter two from `_since_poll` deltas, converted the same way DNS QPS is).
+
+`/current` also returns a `totals` object, rolled up per metric's shape: DNS QPS / DHCP LPS
+/ disk IOPS / network pps are summed (they're rates); cache/query hit ratio sums each
+server's *raw* hit/miss counts first and divides second — not an average of each server's
+percentage, which would misweight servers with very different traffic volumes; CPU %/Memory
+% have no traffic-like weight to sum by, so those are a plain mean across servers. `/history`
+carries DNS QPS / DHCP LPS / cache hit ratio / query hit ratio as time series, one per server
+per metric — the host metrics added here are `/current`-only, no history series yet.
 
 `/current` also returns `api_calls`: every PromQL request this call made against BAM's
 Prometheus, in order, each with the query string, the full request URL, and the raw
@@ -39,17 +46,18 @@ UI's "API calls to BAM's Prometheus" panel — nothing else in this workflow rea
 REST endpoints (mounted at `/bdds_qps/v1/stats`):
 - `GET /bdds_qps/v1/stats/servers` — list BDDS servers currently reporting to Prometheus.
 - `GET /bdds_qps/v1/stats/current` — current DNS QPS / DHCP LPS / cache hit ratio / query hit
-  ratio for all servers (plus a `totals` rollup), or for one server via
-  `?server=<exported_instance>`.
+  ratio / CPU % / memory % / disk read+write IOPS / network RX+TX pps for all servers (plus
+  a `totals` rollup), or for one server via `?server=<exported_instance>`.
 - `GET /bdds_qps/v1/stats/history` — the same four metrics as time series over a window.
 - `GET /bdds_qps/v1/doc/` — Swagger UI for the above.
 
 UI page: `/bdds_qps_ui/page` (nav entry "BDDS Performance Statistics"), polls `/current` every 60
 seconds — matching Prometheus's `global.scrape_interval` on BAM, so faster polling would
 just re-read the same sample. A "Select metrics" panel between the server picker and the
-results table lets you show/hide any of the four columns (DNS QPS, DHCP LPS, Cache Hit %,
-Query Hit %); all four are always fetched in one `/current` call, so toggling one is an
-instant client-side re-render, not a new request. Below that, four history charts side by
+results table lets you show/hide any of the ten columns (DNS QPS, DHCP LPS, Cache Hit %,
+Query Hit %, CPU %, Memory %, Disk Read/Write IOPS, Net RX/TX pkt/s); all ten are always
+fetched in one `/current` call, so toggling one is an instant client-side re-render, not a
+new request. Below that, four history charts side by
 side: DNS QPS, DHCP LPS, Cache Hit %, and Query Hit % (the latter two fixed to a 0-100% Y
 axis). Below that, an "API calls to BAM's Prometheus" panel lists every PromQL request the
 latest `/current` call made, each collapsed to its query string by default — expand one to
@@ -62,6 +70,9 @@ Known Errors and Bugs:
 - Server-side rate is only as fresh as BAM's Prometheus scrape interval (1 minute).
 
 Change Log:
+- 2026-07-15: Added CPU %, Memory %, Disk Read/Write IOPS, and Network RX/TX pkt/s to
+  `/current` and the metric-selection panel, from BAM's Telegraf-style system exporter.
+  `/current`-only for now, no history series/charts yet.
 - 2026-07-15: Added a "Select metrics" panel to the UI, letting the results table show only
   the chosen columns among DNS QPS / DHCP LPS / Cache Hit % / Query Hit % (client-side only,
   no API change).

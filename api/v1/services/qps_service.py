@@ -11,7 +11,14 @@ from ..utils.constants import (
     BIND_DEFAULT_VIEW,
     CACHE_HIT_CACHESTAT,
     CACHE_MISS_CACHESTAT,
+    CPU_USAGE_METRIC,
+    DISK_READS_METRIC,
+    DISK_WRITES_METRIC,
     DNS_REQUEST_NSSTATS,
+    MEMORY_AVAILABLE_METRIC,
+    MEMORY_USED_METRIC,
+    NET_RX_PACKETS_METRIC,
+    NET_TX_PACKETS_METRIC,
     POLL_INTERVAL_SECONDS,
     QUERY_HIT_CACHESTAT,
     QUERY_MISS_CACHESTAT,
@@ -182,12 +189,35 @@ class QPSService:
         cache_hits, cache_misses = self._read_cache_counts(instance_filter, CACHE_HIT_CACHESTAT, CACHE_MISS_CACHESTAT)
         query_hits, query_misses = self._read_cache_counts(instance_filter, QUERY_HIT_CACHESTAT, QUERY_MISS_CACHESTAT)
 
+        # `bc_system_cpu_usage` is a 0-1 fraction already, not a percentage.
+        cpu_usage = self._first_value(self.client.instant_query(f"{CPU_USAGE_METRIC}{{{instance_filter}}}"))
+        cpu_percent = round(cpu_usage * 100, 2) if cpu_usage is not None else None
+
+        # No "total memory" metric is exposed; used/(used+available) matches the same
+        # arithmetic `free`-style tools use for "% memory used".
+        memory = self._read_metrics(instance_filter, [MEMORY_USED_METRIC, MEMORY_AVAILABLE_METRIC])
+        memory_percent = self._ratio_percent(memory.get(MEMORY_USED_METRIC), memory.get(MEMORY_AVAILABLE_METRIC))
+
+        disk = self._read_metrics(instance_filter, [DISK_READS_METRIC, DISK_WRITES_METRIC])
+        disk_read_iops = self._rate_per_second(disk.get(DISK_READS_METRIC))
+        disk_write_iops = self._rate_per_second(disk.get(DISK_WRITES_METRIC))
+
+        net = self._read_metrics(instance_filter, [NET_RX_PACKETS_METRIC, NET_TX_PACKETS_METRIC])
+        net_rx_pps = self._rate_per_second(net.get(NET_RX_PACKETS_METRIC))
+        net_tx_pps = self._rate_per_second(net.get(NET_TX_PACKETS_METRIC))
+
         public = {
             **server,
             "dns_qps": round(dns_requests / POLL_INTERVAL_SECONDS, 2) if dns_requests is not None else None,
             "dhcp_lps": round(dhcp_lps, 2) if dhcp_lps is not None else None,
             "cache_hit_ratio": self._ratio_percent(cache_hits, cache_misses),
             "query_hit_ratio": self._ratio_percent(query_hits, query_misses),
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory_percent,
+            "disk_read_iops": disk_read_iops,
+            "disk_write_iops": disk_write_iops,
+            "net_rx_pps": net_rx_pps,
+            "net_tx_pps": net_tx_pps,
         }
         raw_counts = {
             "cache_hits": cache_hits,
@@ -196,6 +226,24 @@ class QPSService:
             "query_misses": query_misses,
         }
         return public, raw_counts
+
+    def _read_metrics(self, instance_filter: str, metric_names: list) -> dict:
+        """
+        Fetch several differently-*named* instant-value metrics for one server in a single
+        Prometheus request (matching on `__name__` directly), keyed by metric name.
+
+        Unlike `bc_dns_cachestats{cachestat=...}`, these host metrics each have their own
+        metric name rather than sharing one name with a distinguishing label, so this is
+        the equivalent trick for keeping it to one request instead of one per metric.
+        """
+        names_filter = "|".join(metric_names)
+        promql = f'{{__name__=~"{names_filter}", {instance_filter}}}'
+        result = self.client.instant_query(promql)
+        return {series["metric"]["__name__"]: float(series["value"][1]) for series in result}
+
+    @staticmethod
+    def _rate_per_second(since_poll_value):
+        return round(since_poll_value / POLL_INTERVAL_SECONDS, 2) if since_poll_value is not None else None
 
     def _read_cache_counts(self, instance_filter: str, hit_stat: str, miss_stat: str) -> tuple:
         """
@@ -250,21 +298,36 @@ class QPSService:
     @staticmethod
     def _compute_totals(stats: list, raw_counts: list) -> dict:
         """
-        Roll up DNS QPS / DHCP LPS (summable rates) and an overall cache/query hit ratio
-        (summed hits and misses across servers, *then* divided - not an average of each
-        server's percentage, which would misweight servers with very different traffic).
+        Roll up each metric the way that makes sense for its shape:
+        - DNS QPS / DHCP LPS / disk IOPS / network pps are rates, so they're summed.
+        - Cache/query hit ratio: hits and misses are summed across servers *first*, then
+          divided - not an average of each server's percentage, which would misweight
+          servers with very different traffic volumes.
+        - CPU % / memory % have no traffic-like weight to sum by, so this is a plain mean
+          across servers reporting a value.
         """
-        dns_qps_total = sum(s["dns_qps"] for s in stats if s["dns_qps"] is not None)
-        dhcp_lps_total = sum(s["dhcp_lps"] for s in stats if s["dhcp_lps"] is not None)
+        def total(key):
+            return sum(s[key] for s in stats if s[key] is not None)
+
+        def mean(key):
+            values = [s[key] for s in stats if s[key] is not None]
+            return round(sum(values) / len(values), 2) if values else None
+
         cache_hits_total = sum(r["cache_hits"] for r in raw_counts if r["cache_hits"] is not None)
         cache_misses_total = sum(r["cache_misses"] for r in raw_counts if r["cache_misses"] is not None)
         query_hits_total = sum(r["query_hits"] for r in raw_counts if r["query_hits"] is not None)
         query_misses_total = sum(r["query_misses"] for r in raw_counts if r["query_misses"] is not None)
         return {
-            "dns_qps": round(dns_qps_total, 2),
-            "dhcp_lps": round(dhcp_lps_total, 2),
+            "dns_qps": round(total("dns_qps"), 2),
+            "dhcp_lps": round(total("dhcp_lps"), 2),
             "cache_hit_ratio": QPSService._ratio_percent(cache_hits_total, cache_misses_total),
             "query_hit_ratio": QPSService._ratio_percent(query_hits_total, query_misses_total),
+            "cpu_percent": mean("cpu_percent"),
+            "memory_percent": mean("memory_percent"),
+            "disk_read_iops": round(total("disk_read_iops"), 2),
+            "disk_write_iops": round(total("disk_write_iops"), 2),
+            "net_rx_pps": round(total("net_rx_pps"), 2),
+            "net_tx_pps": round(total("net_tx_pps"), 2),
         }
 
     @staticmethod

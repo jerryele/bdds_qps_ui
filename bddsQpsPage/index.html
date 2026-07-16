@@ -858,7 +858,13 @@
     { key: "dns_qps", label: "DNS QPS", format: formatNum },
     { key: "dhcp_lps", label: "DHCP LPS", format: formatNum },
     { key: "cache_hit_ratio", label: "Cache Hit %", format: formatPct },
-    { key: "query_hit_ratio", label: "Query Hit %", format: formatPct }
+    { key: "query_hit_ratio", label: "Query Hit %", format: formatPct },
+    { key: "cpu_percent", label: "CPU %", format: formatPct },
+    { key: "memory_percent", label: "Memory %", format: formatPct },
+    { key: "disk_read_iops", label: "Disk Read IOPS", format: formatNum },
+    { key: "disk_write_iops", label: "Disk Write IOPS", format: formatNum },
+    { key: "net_rx_pps", label: "Net RX pkt/s", format: formatNum },
+    { key: "net_tx_pps", label: "Net TX pkt/s", format: formatNum }
   ];
 
   // Cache/render the last /current response so toggling a metric checkbox can redraw the

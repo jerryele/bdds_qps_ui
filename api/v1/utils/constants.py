@@ -33,3 +33,16 @@ CACHE_HIT_CACHESTAT = "CacheHits"
 CACHE_MISS_CACHESTAT = "CacheMisses"
 QUERY_HIT_CACHESTAT = "QueryHits"
 QUERY_MISS_CACHESTAT = "QueryMisses"
+
+# Host-level system metrics from BAM's Telegraf-style exporter, one series per BDDS with no
+# extra labels to aggregate over (unlike per-core/per-device metrics on some exporters).
+CPU_USAGE_METRIC = "bc_system_cpu_usage"  # 0-1 fraction, not already a percentage
+MEMORY_USED_METRIC = "bc_system_memory_used_bytes"
+MEMORY_AVAILABLE_METRIC = "bc_system_memory_available_bytes"
+
+# `_since_poll` variants exist for these (unlike bc_dns_cachestats), so they convert to a
+# per-second rate the same way DNS QPS does: divide by POLL_INTERVAL_SECONDS.
+DISK_READS_METRIC = "bc_system_diskio_reads_since_poll"
+DISK_WRITES_METRIC = "bc_system_diskio_writes_since_poll"
+NET_RX_PACKETS_METRIC = "bc_system_netio_received_packets_since_poll"
+NET_TX_PACKETS_METRIC = "bc_system_netio_sent_packets_since_poll"
